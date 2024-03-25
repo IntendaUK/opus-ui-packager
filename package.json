@@ -1,0 +1,26 @@
+{
+	"name": "opus-ui-packager",
+	"version": "0.2.0",
+	"description": "Opus UI Packager",
+	"author": "intenda",
+	"main": "src/packager.js",
+	"keywords": [
+		"opus-ui",
+		"packager",
+		"json"	
+	],
+	"scripts": {
+		"build": "node src/packager.js",
+		"watch": "nodemon src/packager.js"
+	},
+	"dependencies": {
+		"color-json": "2.0.0",
+		"colors": "^1.4.0",
+		"fuzzy-matching": "^0.4.3"
+	},
+	"devDependencies": {
+		"eslint": "^7.32.0",
+		"babel-eslint": "^10.1.0",
+		"eslint-plugin-prettier": "^3.4.0"
+	}
+}
