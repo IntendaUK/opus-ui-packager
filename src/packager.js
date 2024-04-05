@@ -2,13 +2,6 @@
 const fixRelativePaths = require('./packager/fixRelativePaths');
 const applyInlineKeys = require('./packager/applyInlineKeys');
 
-// Add the string 'all' to this array to use only external ensembles
-// or add the specific ensemble names you wish to load externally
-let externalEnsembles = null;
-
-//This is the path to the ensembles folder on your machine
-let externalEnsemblesPath = null;
-
 const arg = process.argv.slice(2);
 
 process.chdir(arg[1] ?? process.cwd());
@@ -24,68 +17,45 @@ const { readdir, readFile, writeFile, unlink } = require('fs').promises;
 //Internals
 let osSlash = '/';
 let ensembleNames;
-let renamedFolders = [];
+let remappedPaths = [];
 
 //Helpers
-const remapPath = (path, matchWord = 'node_modules') => {
-	if (!path.includes(`${matchWord}${osSlash}`))
+const remapPath = (path, couldContainEnsembles) => {
+	if (!couldContainEnsembles || path === 'node_modules')
 		return path;
 
-	const i = path.indexOf(matchWord) + matchWord.length + 1;
-	let j = path.indexOf(osSlash, i);
-	if (j === -1)
-		j = undefined;
+	if (path.includes('node_modules')) {
+		const subPath = path.substr(path.indexOf('node_modules') + 13);
+		const possibleEnsembleEntry = ensembleNames.find(f => f.path.includes(subPath) || subPath.includes(f.path));
+		if (!possibleEnsembleEntry)
+			return;
 
-	const ensembleName = path.substring(i, j);
-	if (!ensembleNames.includes(ensembleName))
+		return path;
+	}
+
+	const possibleEnsembleEntry = ensembleNames.find(f => f.path.includes(path) || path.includes(f.path));
+	if (!possibleEnsembleEntry)
 		return;
 
-	if (externalEnsembles.includes('all') || externalEnsembles.includes(ensembleName)) {
-		let mappedPath = path.replace(process.cwd() + osSlash + matchWord, externalEnsemblesPath);
-
-		return mappedPath;
+	if (possibleEnsembleEntry.external && possibleEnsembleEntry.path === path) {
+		remappedPaths.push({
+			path,
+			remappedPath: path.replace(possibleEnsembleEntry.path, `dashboard${osSlash}@${possibleEnsembleEntry.name}`)
+		});
 	}
 
 	return path;
 };
 
 /* eslint-disable-next-line func-style */
-async function* getFiles (path) {
-	let mappedPath = remapPath(path);
+async function* getFiles (path, couldContainEnsembles) {
+	let mappedPath = remapPath(path, couldContainEnsembles);
 	if (!mappedPath)
 		return;
 
 	let dirents;
 
-	try {
-		dirents = await readdir(mappedPath, { withFileTypes: true });
-	} catch (e) {
-		const ensembleName = ensembleNames.find(n => mappedPath.includes(n));
-		if (ensembleName) {
-			const remappedPath = mappedPath
-				.replace(
-					ensembleName,
-					ensembleName.replace(
-						/\_[a-z]/g,
-						(a, i) => {
-							if (i === 2)
-								return a;
-
-							return a[1].toUpperCase();
-						}
-					)
-				);
-
-			renamedFolders.push({
-				mappedPath,
-				remappedPath
-			});
-
-			mappedPath = remappedPath;
-		}
-
-		dirents = await readdir(mappedPath, { withFileTypes: true });
-	}
+	dirents = await readdir(mappedPath, { withFileTypes: true });
 
 	for (const dirent of dirents) {
 		const res = resolve(mappedPath, dirent.name);
@@ -94,10 +64,10 @@ async function* getFiles (path) {
 			if (ignoreFolders.includes(dirent.name))
 				continue;
 
-			yield* getFiles(res);
-		} else if (res.split('.').pop() !== 'json') 
+			yield* getFiles(res, couldContainEnsembles);
+		} else if (res.split('.').pop() !== 'json')
 			continue;
-		 else {
+		else {
 			if (res.includes('mdaPackage') || res.includes('package.json'))
 				continue;
 
@@ -112,28 +82,83 @@ const init = async packageFile => {
 	else
 		osSlash = '/';
 
-	if (osSlash === '/')
-		externalEnsemblesPath = externalEnsemblesPath.replaceAll('\\', osSlash);
-	else
-		externalEnsemblesPath = externalEnsemblesPath.replaceAll('/', osSlash);
+	ensembleNames = (packageFile.opusUiEnsembles ?? []).map(f => {
+		const fixedPath = (f.path ?? f).replaceAll('/', osSlash).replaceAll('\\', osSlash);
 
-	ensembleNames = Object.keys(packageFile.dependencies ?? []);
+		return {
+			external: f.external,
+			name: f.name ?? f,
+			path: fixedPath
+		};
+	});
 };
 
-const setPathsOnViewports = (obj, path) => {
+const setPathsOnViewports = (obj, viewportPath) => {
 	if (obj.type === 'viewport') {
 		if (!obj.prps)
 			obj.prps = {};
 
-		obj.prps.path = path;
+		obj.prps.path = viewportPath;
 	}
 
-	Object.entries(obj).forEach(([k, v]) => {
+	Object.values(obj).forEach(v => {
 		if (typeof(v) !== 'object' || v === null)
 			return;
 
-		setPathsOnViewports(v, path);
+		setPathsOnViewports(v, viewportPath);
 	});
+};
+
+const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
+	for await (let path of getFiles(`${dir}`, couldContainEnsembles)) {
+		let filePath = path;
+
+		let file;
+		file = (await readFile(path, 'utf-8'))
+			.replaceAll('\r', '')
+			.replaceAll('\n', '')
+			.replaceAll('\t', '');
+
+		let keyPath = path;
+
+		if (ensembleNames.some(f => path.includes(f.path))) {
+			const remapped = remappedPaths.find(f => path.includes(f.path));
+			if (remapped)
+				keyPath = `${remapped.remappedPath}${osSlash}${path.replace(remapped.path + osSlash, '')}`;
+			else
+				keyPath = `dashboard${osSlash}@${path.replace(cwd + osSlash, '')}`;
+		}
+
+		keyPath = keyPath.replace(cwd, '');
+
+		const dirs = keyPath.split(/\/|\\/);
+		const key = dirs.pop();
+
+		let accessor = res;
+		dirs.forEach(d => {
+			if (!accessor[d])
+				accessor[d] = {};
+
+			accessor = accessor[d];
+		});
+
+		let json;
+
+		try {
+			json = JSON.parse(file);
+		} catch (e) {
+			json = {
+				type: 'label',
+				prps: { cpt: `'${path}' is not valid JSON` }
+			};
+		}
+
+		const viewportPath = dirs.join('/').replace('dashboard/', '');
+
+		setPathsOnViewports(json, viewportPath);
+
+		accessor[key] = json;
+	}
 };
 
 //Packager
@@ -141,13 +166,7 @@ const setPathsOnViewports = (obj, path) => {
 	let config;
 	try {
 		config = JSON.parse(await readFile('theme/packager.json', 'utf-8'));
-
-		externalEnsembles = config.externalEnsembles;
-		externalEnsemblesPath = arg[0] ?? config.externalEnsemblesPath;
-	} catch (e) {
-		externalEnsembles = [];
-		externalEnsemblesPath = arg[0] ?? '';
-	}
+	} catch (e) {}
 
 	console.log('Packaging...');
 	const res = {};
@@ -178,100 +197,67 @@ const setPathsOnViewports = (obj, path) => {
 
 	const cwd = `${process.cwd()}${appDir ? osSlash + appDir + osSlash : osSlash}`;
 
-	for await (let path of getFiles(`./${appDir}`)) {
-		let originalPath = path;
+	await processDir(appDir, cwd, res, false);
+	if (!['', '.', './'].includes(appDir))
+		await processDir('node_modules', `${process.cwd()}${osSlash}node_modules`, res, true);
 
-		const foundRenamed = renamedFolders.find(f => path.includes(f.remappedPath));
-		if (foundRenamed)
-			originalPath = originalPath.replace(foundRenamed.remappedPath, foundRenamed.mappedPath);
+	for (let e of ensembleNames) {
+		if (!e.external)
+			continue;
 
-		if (path.includes('ensembles'))
-			originalPath = originalPath.replace(externalEnsemblesPath, cwd + 'node_modules');
-
-		let file;
-
-		file = (await readFile(path, 'utf-8'))
-			.replaceAll('\r', '')
-			.replaceAll('\n', '')
-			.replaceAll('\t', '');
-
-		let accessor = res;
-
-		const dirs = originalPath.replace(cwd, '').split(/\/|\\/);
-		const key = dirs.pop();
-
-		dirs.forEach(d => {
-			if (!accessor[d])
-				accessor[d] = {};
-
-			accessor = accessor[d];
-		});
-
-		let json;
-
-		try {
-			json = JSON.parse(file);
-		} catch (e) {
-			json = {
-				type: 'label',
-				prps: {
-					cpt: `'${path}' is not valid JSON`
-				}
-			};
-		}
-
-		const prpPath = originalPath
-			.replace(cwd, '')
-			.replace(`node_modules${osSlash}`, '@')
-			.replace(`${osSlash}${key}`, '');
-
-		setPathsOnViewports(json, prpPath);
-
-		accessor[key] = json;
+		await processDir(e.path, e.path, res, true);
 	}
+
+	delete res[''];
 
 	const indexJson = res.dashboard['index.json'];
 
-	const ensembles = res.node_modules;
-	if (ensembles) {
-		Object.entries(ensembles).forEach(([k, v]) => {
-			if (!ensembleNames.includes(k))
-				return;
+	ensembleNames.forEach(f => {
+		let entry = res.dashboard;
 
-			res.dashboard['@' + k] = v;
+		let keyPath = f.path;
 
-			const ensembleConfig = v['config.json'];
-			if (!ensembleConfig)
-				return;
+		const remapped = remappedPaths.find(r => r.path === f.path);
+		if (remapped)
+			keyPath = remapped.remappedPath;
 
-			if (ensembleConfig.themes) {
-				ensembleConfig.themes.forEach(t => {
-					if (!indexJson.themes.includes[t])
-						indexJson.themes.push(t);
+		const split = keyPath.split(osSlash);
+		if (!remapped)
+			split[0] = `@${split[0]}`;
+		else
+			split.splice(0, 1);
 
-					const themeFileName = t + '.json';
-					const theme = v.theme[themeFileName];
-
-					const existingTheme = res.theme[themeFileName];
-
-					if (!existingTheme)
-						res.theme[themeFileName] = theme;
-					else {
-						Object.entries(theme).forEach(([kInner, vInner]) => {
-							if (existingTheme[kInner] === undefined)
-								existingTheme[kInner] = vInner;
-						});
-					}
-
-					let ensembleLocation = `${process.cwd()}${osSlash}node_modules${osSlash}${k}`;
-					if (externalEnsembles.includes('all') || externalEnsembles.includes(k))
-						ensembleLocation = ensembleLocation.replace(`${process.cwd()}${osSlash}node_modules`, externalEnsemblesPath);
-
-					res.theme[themeFileName].ensembleLocation = ensembleLocation;
-				});
-			}
+		split.forEach(s => {
+			entry = entry[s];
 		});
-	}
+
+		const ensembleConfig = entry['config.json'];
+		if (!ensembleConfig)
+			return;
+
+		if (ensembleConfig.themes) {
+			ensembleConfig.themes.forEach(t => {
+				if (!indexJson.themes.includes[t])
+					indexJson.themes.push(t);
+
+				const themeFileName = t + '.json';
+				const theme = entry.theme[themeFileName];
+
+				const existingTheme = res.theme[themeFileName];
+
+				if (!existingTheme)
+					res.theme[themeFileName] = theme;
+				else {
+					Object.entries(theme).forEach(([kInner, vInner]) => {
+						if (existingTheme[kInner] === undefined)
+							existingTheme[kInner] = vInner;
+					});
+				}
+
+				res.theme[themeFileName].ensembleLocation = f.path;
+			});
+		}
+	});
 
 	delete res.node_modules;
 	delete res['package.json'];
@@ -289,7 +275,9 @@ const setPathsOnViewports = (obj, path) => {
 				const fnLocation = v.fn.replace('{ensembleLocation}', theme.ensembleLocation);
 
 				let f = `${fnLocation.substr(1)}.js`;
-				f = `${appDir ? appDir + osSlash : ''}${f}`;
+
+				if (!theme.ensembleLocation)
+					f = `${cwd}${f}`;
 
 				const convertedFileString = (await readFile(f, 'utf-8'))
 					.replaceAll('\r', ' ')
@@ -308,7 +296,7 @@ const setPathsOnViewports = (obj, path) => {
 					folder = `${appDir ? appDir + osSlash : ''}${folder}`;
 
 					const dirents = await readdir(folder, { withFileTypes: true });
-					
+
 					for (const { name: fileName } of dirents) {
 						const fileString = (await readFile(`${folder}${osSlash}${fileName}`, 'utf-8'));
 
