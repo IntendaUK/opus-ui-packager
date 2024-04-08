@@ -111,8 +111,6 @@ const setPathsOnViewports = (obj, viewportPath) => {
 
 const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 	for await (let path of getFiles(`${dir}`, couldContainEnsembles)) {
-		let filePath = path;
-
 		let file;
 		file = (await readFile(path, 'utf-8'))
 			.replaceAll('\r', '')
@@ -121,7 +119,7 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 
 		let keyPath = path;
 
-		if (ensembleNames.some(f => path.includes(f.path))) {
+		if (ensembleNames.some(f => path.includes(f.path + '\\'))) {
 			const remapped = remappedPaths.find(f => path.includes(f.path));
 			if (remapped)
 				keyPath = `${remapped.remappedPath}${osSlash}${path.replace(remapped.path + osSlash, '')}`;
@@ -254,7 +252,10 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 					});
 				}
 
-				res.theme[themeFileName].ensembleLocation = f.path;
+				if (f.external)
+					res.theme[themeFileName].ensembleLocation = f.path;
+				else
+					res.theme[themeFileName].ensembleLocation = `node_modules/${f.path}`;
 			});
 		}
 	});
