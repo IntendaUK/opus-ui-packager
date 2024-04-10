@@ -119,7 +119,7 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 
 		let keyPath = path;
 
-		if (ensembleNames.some(f => path.includes(f.path + '\\'))) {
+		if (ensembleNames.some(f => path.includes(f.path + osSlash))) {
 			const remapped = remappedPaths.find(f => path.includes(f.path));
 			if (remapped)
 				keyPath = `${remapped.remappedPath}${osSlash}${path.replace(remapped.path + osSlash, '')}`;
