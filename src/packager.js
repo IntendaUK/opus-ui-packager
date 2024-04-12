@@ -1,6 +1,6 @@
 //Imports
 const { resolve } = require('path');
-const { readdir, readFile, writeFile, unlink } = require('fs').promises;
+const { readdir, readFile, writeFile } = require('fs').promises;
 
 //Helpers
 const fixRelativePaths = require('./packager/fixRelativePaths');
@@ -195,19 +195,6 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 
 	const appDir = packageFile.opusPackagerConfig?.appDir ?? '';
 	const packagedDir = packageFile.opusPackagerConfig?.packagedDir ?? 'packaged';
-
-	while (true) {
-		let ok = false;
-		try {
-			await unlink(`${packagedDir}${osSlash}${packagedFileName}`);
-			ok = true;
-		} catch (e) {
-			if ((e + '').includes('no such file'))
-				ok = true;
-		}
-		if (ok)
-			break;
-	}
 
 	const cwd = `${process.cwd()}${appDir ? osSlash + appDir + osSlash : osSlash}`;
 
