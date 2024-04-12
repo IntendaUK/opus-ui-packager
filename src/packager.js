@@ -1,18 +1,28 @@
+//Imports
+const { resolve } = require('path');
+const { readdir, readFile, writeFile, unlink } = require('fs').promises;
+
 //Helpers
 const fixRelativePaths = require('./packager/fixRelativePaths');
 const applyInlineKeys = require('./packager/applyInlineKeys');
 
-const arg = process.argv.slice(2);
+const args = Object.fromEntries(
+	process.argv.slice(2)
+		.filter(e => e.indexOf('--') === 0)
+		.map(e => {
+			const [rawKey, value] = e.split('=');
+			const key = rawKey.substr(2);
 
-process.chdir(arg[1] ?? process.cwd());
+			return [
+				key,
+				value
+			];
+		})
+);
 
 const ignoreFolders = [
 	'.git'
 ];
-
-//Imports
-const { resolve } = require('path');
-const { readdir, readFile, writeFile, unlink } = require('fs').promises;
 
 //Internals
 let osSlash = '/';
@@ -176,9 +186,15 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 
 	await init(packageFile);
 
+	let packagedFileName = (packageFile.opusPackagerConfig?.packagedFileName ?? 'mdaPackage');
+
+	if (args.output === 'js')
+		packagedFileName = `${packagedFileName}.jsx`;
+	else
+		packagedFileName = `${packagedFileName}.json`;
+
 	const appDir = packageFile.opusPackagerConfig?.appDir ?? '';
 	const packagedDir = packageFile.opusPackagerConfig?.packagedDir ?? 'packaged';
-	const packagedFileName = (packageFile.opusPackagerConfig?.packagedFileName ?? 'mdaPackage') + '.json';
 
 	while (true) {
 		let ok = false;
@@ -322,7 +338,12 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 	fixRelativePaths(res);
 	applyInlineKeys(res);
 
-	await writeFile(`${packagedDir}/${packagedFileName}`, JSON.stringify(res));
+	let packagedFileContents = JSON.stringify(res);
+
+	if (args.output === 'js')
+		packagedFileContents = `/* eslint-disable */ const app = ${packagedFileContents}; export default app;`;
+
+	await writeFile(`${packagedDir}/${packagedFileName}`, packagedFileContents);
 
 	console.log('...completed');
 })();
