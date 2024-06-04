@@ -1,5 +1,5 @@
 //Imports
-const { resolve } = require('path');
+const { resolve, join } = require('path');
 const { readdir, readFile, writeFile } = require('fs').promises;
 
 //Helpers
@@ -28,6 +28,9 @@ const ignoreFolders = [
 let osSlash = '/';
 let ensembleNames;
 let remappedPaths = [];
+
+const opusUiConfigFileName = '.opusUiConfig';
+const opusUiConfigKeys = ['opusPackagerConfig', 'opusUiComponentLibraries', 'opusUiEnsembles', 'opusUiColorThemes'];
 
 //Helpers
 const remapPath = (path, couldContainEnsembles) => {
@@ -86,13 +89,13 @@ async function* getFiles (path, couldContainEnsembles) {
 	}
 }
 
-const init = async packageFile => {
+const init = async opusUiConfig => {
 	if (`${process.cwd()}`.includes('\\'))
 		osSlash = '\\';
 	else
 		osSlash = '/';
 
-	ensembleNames = (packageFile.opusUiEnsembles ?? []).map(f => {
+	ensembleNames = (opusUiConfig.opusUiEnsembles ?? []).map(f => {
 		const fixedPath = (f.path ?? f).replaceAll('/', osSlash).replaceAll('\\', osSlash);
 
 		return {
@@ -169,12 +172,75 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 	}
 };
 
+const isObjectLiteral = (value) => {
+	const res = typeof value === 'object' && value !== null && !Array.isArray(value);
+
+	return res;
+};
+
+const buildExternalOpusUiConfigPath = (opusAppPackageValue) => {
+	const defaultPath = opusUiConfigFileName;
+
+	if (!opusAppPackageValue.opusUiConfig || !isObjectLiteral(opusAppPackageValue.opusUiConfig))
+		return defaultPath;
+
+	let externalOpusUiConfig = opusAppPackageValue.opusUiConfig.externalOpusUiConfig;
+	if (!externalOpusUiConfig || typeof externalOpusUiConfig !== 'string')
+		return defaultPath;
+
+	return externalOpusUiConfig;
+};
+
+const getOpusUiConfigFile = async (externalOpusUiConfigPath) => {
+	let externalOpusUiConfig = null;
+
+	try {
+		const fetchedExternalOpusUiConfig = await readFile(externalOpusUiConfigPath, 'utf-8');
+		if (!fetchedExternalOpusUiConfig)
+			throw new Error();
+
+		externalOpusUiConfig = JSON.parse(fetchedExternalOpusUiConfig);
+	} catch (e) {}
+
+	if (!isObjectLiteral(externalOpusUiConfig))
+		return null;
+
+	return externalOpusUiConfig;
+};
+
+const buildOpusUiConfig = async (opusAppPackageValue) => {
+	const opusUiConfig = {};
+
+	// Start with opusUiConfig entries from package.json
+	opusUiConfigKeys.forEach(k => {
+		if (opusAppPackageValue[k]) opusUiConfig[k] = opusAppPackageValue[k];
+	});
+
+	if (opusAppPackageValue.opusUiConfig && isObjectLiteral(opusAppPackageValue.opusUiConfig)) {
+		// Override opusUiConfig entries with those from opusUiConfig object in package.json
+		opusUiConfigKeys.forEach(k => {
+			if (opusAppPackageValue.opusUiConfig[k]) opusUiConfig[k] = opusAppPackageValue.opusUiConfig[k];
+		});
+	}
+
+	const externalOpusUiConfigPath = buildExternalOpusUiConfigPath(opusAppPackageValue);
+
+	const externalOpusUiConfigData = await getOpusUiConfigFile(externalOpusUiConfigPath);
+
+	if (externalOpusUiConfigData) {
+		// Override opusUiConfig entries with those from external opusUiConfig file.
+		opusUiConfigKeys.forEach(k => {
+			if (externalOpusUiConfigData[k]) opusUiConfig[k] = externalOpusUiConfigData[k];
+		});
+	}
+
+	return opusUiConfig;
+};
+
 //Packager
 (async () => {
-	let config;
-	try {
-		config = JSON.parse(await readFile('theme/packager.json', 'utf-8'));
-	} catch (e) {}
+	if (args.devmode === 'true')
+		await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
 
 	console.log('Packaging...');
 	const res = {};
@@ -184,17 +250,19 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 		packageFile = JSON.parse(await readFile('package.json', 'utf-8'));
 	} catch (e) {}
 
-	await init(packageFile);
+	const opusUiConfig = await buildOpusUiConfig(packageFile);
 
-	let packagedFileName = (packageFile.opusPackagerConfig?.packagedFileName ?? 'mdaPackage');
+	await init(opusUiConfig);
+
+	let packagedFileName = (opusUiConfig.opusPackagerConfig?.packagedFileName ?? 'mdaPackage');
 
 	if (args.output === 'js')
 		packagedFileName = `${packagedFileName}.jsx`;
 	else
 		packagedFileName = `${packagedFileName}.json`;
 
-	const appDir = packageFile.opusPackagerConfig?.appDir ?? '';
-	const packagedDir = packageFile.opusPackagerConfig?.packagedDir ?? 'packaged';
+	const appDir = opusUiConfig.opusPackagerConfig?.appDir ?? '';
+	const packagedDir = opusUiConfig.opusPackagerConfig?.packagedDir ?? 'packaged';
 
 	const cwd = `${process.cwd()}${appDir ? osSlash + appDir + osSlash : osSlash}`;
 
