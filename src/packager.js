@@ -1,5 +1,5 @@
 //Imports
-const { resolve } = require('path');
+const { resolve, join } = require('path');
 const { readdir, readFile, writeFile } = require('fs').promises;
 
 //Helpers
@@ -28,7 +28,9 @@ const ignoreFolders = [
 let osSlash = '/';
 let ensembleNames;
 let remappedPaths = [];
-const opusUiConfigKeys = ['opusPackagerConfig', 'opusUiComponentLibraries', 'opusUiEnsembles'];
+
+const opusUiConfigFileName = '.opusUiConfig';
+const opusUiConfigKeys = ['opusPackagerConfig', 'opusUiComponentLibraries', 'opusUiEnsembles', 'opusUiColorThemes'];
 
 //Helpers
 const remapPath = (path, couldContainEnsembles) => {
@@ -170,35 +172,70 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 	}
 };
 
-const getOpusUiConfig = async (packagerFile) => {
+const isObjectLiteral = (value) => {
+	const res = typeof value === 'object' && value !== null && !Array.isArray(value);
+
+	return res;
+};
+
+const buildExternalOpusUiConfigPath = (opusAppPackageValue) => {
+	const defaultPath = opusUiConfigFileName;
+
+	if (!opusAppPackageValue.opusUiConfig || !isObjectLiteral(opusAppPackageValue.opusUiConfig))
+		return defaultPath;
+
+	let externalOpusUiConfig = opusAppPackageValue.opusUiConfig.externalOpusUiConfig;
+	if (!externalOpusUiConfig || typeof externalOpusUiConfig !== 'string')
+		return defaultPath;
+
+	return externalOpusUiConfig;
+};
+
+const getOpusUiConfigFile = async (externalOpusUiConfigPath) => {
+	let externalOpusUiConfig = null;
+
+	try {
+		const fetchedExternalOpusUiConfig = await readFile(externalOpusUiConfigPath, 'utf-8');
+		if (!fetchedExternalOpusUiConfig)
+			throw new Error();
+
+		externalOpusUiConfig = JSON.parse(fetchedExternalOpusUiConfig);
+	} catch (e) {}
+
+	if (!isObjectLiteral(externalOpusUiConfig))
+		return null;
+
+	return externalOpusUiConfig;
+};
+
+const buildOpusUiConfig = async (opusAppPackageValue) => {
 	const opusUiConfig = {};
 
+	// Start with opusUiConfig entries from package.json
 	opusUiConfigKeys.forEach(k => {
-		if(packagerFile[k]) opusUiConfig[k] = packagerFile[k]
+		if (opusAppPackageValue[k]) opusUiConfig[k] = opusAppPackageValue[k];
 	});
 
-	if (packagerFile.opusUiConfig) {
+	if (opusAppPackageValue.opusUiConfig && isObjectLiteral(opusAppPackageValue.opusUiConfig)) {
+		// Override opusUiConfig entries with those from opusUiConfig object in package.json
 		opusUiConfigKeys.forEach(k => {
-			if (packagerFile.opusUiConfig[k]) opusUiConfig[k] = packagerFile.opusUiConfig[k]
+			if (opusAppPackageValue.opusUiConfig[k]) opusUiConfig[k] = opusAppPackageValue.opusUiConfig[k];
 		});
+	}
 
-		if (packagerFile.opusUiConfig.externalOpusUiConfig && typeof packagerFile.opusUiConfig.externalOpusUiConfig === 'string') {
-			let externalOpusUiConfigData;
+	const externalOpusUiConfigPath = buildExternalOpusUiConfigPath(opusAppPackageValue);
 
-			try {
-				externalOpusUiConfigData = JSON.parse(await readFile(packagerFile.opusUiConfig.externalOpusUiConfig, 'utf-8'));
-			} catch (e) {
-				externalOpusUiConfigData = {};
-			}
+	const externalOpusUiConfigData = await getOpusUiConfigFile(externalOpusUiConfigPath);
 
-			opusUiConfigKeys.forEach(k => {
-				if (externalOpusUiConfigData[k]) opusUiConfig[k] = externalOpusUiConfigData[k]
-			});
-		}
+	if (externalOpusUiConfigData) {
+		// Override opusUiConfig entries with those from external opusUiConfig file.
+		opusUiConfigKeys.forEach(k => {
+			if (externalOpusUiConfigData[k]) opusUiConfig[k] = externalOpusUiConfigData[k];
+		});
 	}
 
 	return opusUiConfig;
-}
+};
 
 //Packager
 (async () => {
@@ -213,7 +250,7 @@ const getOpusUiConfig = async (packagerFile) => {
 		packageFile = JSON.parse(await readFile('package.json', 'utf-8'));
 	} catch (e) {}
 
-	const opusUiConfig = await getOpusUiConfig(packageFile);
+	const opusUiConfig = await buildOpusUiConfig(packageFile);
 
 	await init(opusUiConfig);
 
