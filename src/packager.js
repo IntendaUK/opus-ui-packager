@@ -26,6 +26,7 @@ const ignoreFolders = [
 
 //Internals
 let osSlash = '/';
+let opusUiConfig;
 let ensembleNames;
 let remappedPaths = [];
 
@@ -74,17 +75,30 @@ async function* getFiles (path, couldContainEnsembles) {
 		const res = resolve(mappedPath, dirent.name);
 
 		if (dirent.isDirectory()) {
-			if (ignoreFolders.includes(dirent.name))
+			if (
+				(
+					dirent.name.includes('node_modules') &&
+					opusUiConfig.opusPackagerConfig.isEnsemble
+				) ||
+				ignoreFolders.includes(dirent.name) ||
+				dirent.name === opusUiConfig.opusPackagerConfig.packagedDir
+			)
 				continue;
 
 			yield* getFiles(res, couldContainEnsembles);
 		} else if (res.split('.').pop() !== 'json')
 			continue;
 		else {
-			if (res.includes('mdaPackage') || res.includes('package.json'))
+			if (
+				res.includes(opusUiConfig.opusPackagerConfig.packagedFileName + '.json') ||
+				res.includes('package.json') ||
+				res.includes('package-lock.json')
+			)
 				continue;
 
-			yield res;
+			if (res.includes)
+
+				yield res;
 		}
 	}
 }
@@ -139,11 +153,19 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 			else
 				keyPath = `dashboard${osSlash}@${path.replace(cwd + osSlash, '')}`;
 		}
-
 		keyPath = keyPath.replace(cwd, '');
+
+		if (!path.includes(`${osSlash}theme${osSlash}`) && opusUiConfig.opusPackagerConfig.isEnsemble)
+			keyPath = `dashboard\\@${opusUiConfig.opusPackagerConfig.ensembleName}\\${keyPath}`;
 
 		const dirs = keyPath.split(/\/|\\/);
 		const key = dirs.pop();
+
+		let ensembleIsInDist = false;
+		if (dirs[2] === 'dist') {
+			ensembleIsInDist = true;
+			dirs.splice(2, 1);
+		}
 
 		let accessor = res;
 		dirs.forEach(d => {
@@ -169,16 +191,18 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 		setPathsOnViewports(json, viewportPath);
 
 		accessor[key] = json;
+		if (ensembleIsInDist && dirs.length === 2 && key === 'config.json')
+			json.ensembleIsInDist = true;
 	}
 };
 
-const isObjectLiteral = (value) => {
+const isObjectLiteral = value => {
 	const res = typeof value === 'object' && value !== null && !Array.isArray(value);
 
 	return res;
 };
 
-const buildExternalOpusUiConfigPath = (opusAppPackageValue) => {
+const buildExternalOpusUiConfigPath = opusAppPackageValue => {
 	const defaultPath = opusUiConfigFileName;
 
 	if (!opusAppPackageValue.opusUiConfig || !isObjectLiteral(opusAppPackageValue.opusUiConfig))
@@ -191,7 +215,7 @@ const buildExternalOpusUiConfigPath = (opusAppPackageValue) => {
 	return externalOpusUiConfig;
 };
 
-const getOpusUiConfigFile = async (externalOpusUiConfigPath) => {
+const getOpusUiConfigFile = async externalOpusUiConfigPath => {
 	let externalOpusUiConfig = null;
 
 	try {
@@ -208,7 +232,7 @@ const getOpusUiConfigFile = async (externalOpusUiConfigPath) => {
 	return externalOpusUiConfig;
 };
 
-const buildOpusUiConfig = async (opusAppPackageValue) => {
+const buildOpusUiConfig = async opusAppPackageValue => {
 	const opusUiConfig = {};
 
 	// Start with opusUiConfig entries from package.json
@@ -250,7 +274,7 @@ const buildOpusUiConfig = async (opusAppPackageValue) => {
 		packageFile = JSON.parse(await readFile('package.json', 'utf-8'));
 	} catch (e) {}
 
-	const opusUiConfig = await buildOpusUiConfig(packageFile);
+	opusUiConfig = await buildOpusUiConfig(packageFile);
 
 	await init(opusUiConfig);
 
@@ -266,8 +290,8 @@ const buildOpusUiConfig = async (opusAppPackageValue) => {
 
 	const cwd = `${process.cwd()}${appDir ? osSlash + appDir + osSlash : osSlash}`;
 
-	await processDir(appDir, cwd, res, false);
-	if (!['', '.', './'].includes(appDir))
+	await processDir(appDir === '' ? './' : appDir, cwd, res, false);
+	if (!['', '.', './'].includes(appDir) && !opusUiConfig.opusPackagerConfig.isEnsemble)
 		await processDir('node_modules', `${process.cwd()}${osSlash}node_modules`, res, true);
 
 	for (let e of ensembleNames) {
@@ -279,7 +303,7 @@ const buildOpusUiConfig = async (opusAppPackageValue) => {
 
 	delete res[''];
 
-	const indexJson = res.dashboard['index.json'];
+	const indexJson = res.dashboard?.['index.json'];
 
 	ensembleNames.forEach(f => {
 		let entry = res.dashboard;
@@ -325,6 +349,8 @@ const buildOpusUiConfig = async (opusAppPackageValue) => {
 
 				if (f.external)
 					res.theme[themeFileName].ensembleLocation = f.path;
+				else if (ensembleConfig.ensembleIsInDist)
+					res.theme[themeFileName].ensembleLocation = `node_modules/${f.path}/dist`;
 				else
 					res.theme[themeFileName].ensembleLocation = `node_modules/${f.path}`;
 			});
@@ -336,56 +362,55 @@ const buildOpusUiConfig = async (opusAppPackageValue) => {
 	delete res['package-lock.json'];
 	delete res['serve.json'];
 
-	const themeEntries = Object.entries(res.theme);
-	for (let [, theme] of themeEntries) {
-		if (theme.themeConfig?.isFunctionTheme) {
-			const entries = Object.entries(theme);
-			for (let [k, v] of entries) {
-				if (v.fn?.[0] !== '>')
-					continue;
+	if (!opusUiConfig.opusPackagerConfig.isEnsemble) {
+		const themeEntries = Object.entries(res.theme);
+		for (let [, theme] of themeEntries) {
+			if (theme.themeConfig?.isFunctionTheme) {
+				const entries = Object.entries(theme);
+				for (let [k, v] of entries) {
+					if (v.fn?.[0] !== '>')
+						continue;
 
-				const fnLocation = v.fn.replace('{ensembleLocation}', theme.ensembleLocation);
+					let f = v.fn.replace('{ensembleLocation}', theme.ensembleLocation).substr(1) + '.js';
+					if (!theme.ensembleLocation)
+						f = `${cwd}${f}`;
 
-				let f = `${fnLocation.substr(1)}.js`;
+					const convertedFileString = (await readFile(f, 'utf-8'))
+						.replaceAll('\r', ' ')
+						.replaceAll('\n', ' ')
+						.replaceAll('\t', ' ');
 
-				if (!theme.ensembleLocation)
-					f = `${cwd}${f}`;
+					theme[k].fn = convertedFileString;
+				}
+			} else if (theme.themeConfig?.isFreeTextTheme) {
+				const entries = Object.entries(theme);
+				for (let [k, v] of entries) {
+					if (v.indexOf && v.indexOf('>>') === 0) {
+						theme[k] = {};
 
-				const convertedFileString = (await readFile(f, 'utf-8'))
-					.replaceAll('\r', ' ')
-					.replaceAll('\n', ' ')
-					.replaceAll('\t', ' ');
+						let folder = v.substr(2);
+						folder = `${appDir ? appDir + osSlash : ''}${folder}`;
 
-				theme[k].fn = convertedFileString;
-			}
-		} else if (theme.themeConfig?.isFreeTextTheme) {
-			const entries = Object.entries(theme);
-			for (let [k, v] of entries) {
-				if (v.indexOf && v.indexOf('>>') === 0) {
-					theme[k] = {};
+						const dirents = await readdir(folder, { withFileTypes: true });
 
-					let folder = v.substr(2);
-					folder = `${appDir ? appDir + osSlash : ''}${folder}`;
+						for (const { name: fileName } of dirents) {
+							const fileString = (await readFile(`${folder}${osSlash}${fileName}`, 'utf-8'));
 
-					const dirents = await readdir(folder, { withFileTypes: true });
+							theme[k][fileName.split('.')[0]] = fileString;
+						}
 
-					for (const { name: fileName } of dirents) {
-						const fileString = (await readFile(`${folder}${osSlash}${fileName}`, 'utf-8'));
-
-						theme[k][fileName.split('.')[0]] = fileString;
+						continue;
 					}
 
-					continue;
+					if (v[0] !== '>')
+						continue;
+
+					const f = `${appDir ? appDir + osSlash : ''}${v.substr(1)}`;
+
+					const convertedFileString = (await readFile(f, 'utf-8'));
+
+					theme[k] = convertedFileString;
 				}
-
-				if (v[0] !== '>')
-					continue;
-
-				const f = `${appDir ? appDir + osSlash : ''}${v.substr(1)}`;
-
-				const convertedFileString = (await readFile(f, 'utf-8'));
-
-				theme[k] = convertedFileString;
 			}
 		}
 	}
