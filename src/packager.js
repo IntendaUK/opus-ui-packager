@@ -29,6 +29,7 @@ let osSlash = '/';
 let opusUiConfig;
 let ensembleNames;
 let remappedPaths = [];
+const excludeEnsembles = args.excludeEnsembles === 'true';
 
 const opusUiConfigFileName = '.opusUiConfig';
 const opusUiConfigKeys = ['opusPackagerConfig', 'opusUiComponentLibraries', 'opusUiEnsembles', 'opusUiColorThemes'];
@@ -291,71 +292,75 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 	const cwd = `${process.cwd()}${appDir ? osSlash + appDir + osSlash : osSlash}`;
 
 	await processDir(appDir === '' ? './' : appDir, cwd, res, false);
-	if (!['', '.', './'].includes(appDir) && !opusUiConfig.opusPackagerConfig.isEnsemble)
-		await processDir('node_modules', `${process.cwd()}${osSlash}node_modules`, res, true);
+	if (!excludeEnsembles) {
+		if (!['', '.', './'].includes(appDir) && !opusUiConfig.opusPackagerConfig.isEnsemble)
+			await processDir('node_modules', `${process.cwd()}${osSlash}node_modules`, res, true);
 
-	for (let e of ensembleNames) {
-		if (!e.external)
-			continue;
+		for (let e of ensembleNames) {
+			if (!e.external)
+				continue;
 
-		await processDir(e.path, e.path, res, true);
+			await processDir(e.path, e.path, res, true);
+		}
 	}
 
 	delete res[''];
 
 	const indexJson = res.dashboard?.['index.json'];
 
-	ensembleNames.forEach(f => {
-		let entry = res.dashboard;
+	if (!excludeEnsembles) {
+		ensembleNames.forEach(f => {
+			let entry = res.dashboard;
 
-		let keyPath = f.path;
+			let keyPath = f.path;
 
-		const remapped = remappedPaths.find(r => r.path === f.path);
-		if (remapped)
-			keyPath = remapped.remappedPath;
+			const remapped = remappedPaths.find(r => r.path === f.path);
+			if (remapped)
+				keyPath = remapped.remappedPath;
 
-		const split = keyPath.split(osSlash);
-		if (!remapped)
-			split[0] = `@${split[0]}`;
-		else
-			split.splice(0, 1);
+			const split = keyPath.split(osSlash);
+			if (!remapped)
+				split[0] = `@${split[0]}`;
+			else
+				split.splice(0, 1);
 
-		split.forEach(s => {
-			entry = entry[s];
-		});
-
-		const ensembleConfig = entry['config.json'];
-		if (!ensembleConfig)
-			return;
-
-		if (ensembleConfig.themes) {
-			ensembleConfig.themes.forEach(t => {
-				if (!indexJson.themes.includes[t])
-					indexJson.themes.push(t);
-
-				const themeFileName = t + '.json';
-				const theme = entry.theme[themeFileName];
-
-				const existingTheme = res.theme[themeFileName];
-
-				if (!existingTheme)
-					res.theme[themeFileName] = theme;
-				else {
-					Object.entries(theme).forEach(([kInner, vInner]) => {
-						if (existingTheme[kInner] === undefined)
-							existingTheme[kInner] = vInner;
-					});
-				}
-
-				if (f.external)
-					res.theme[themeFileName].ensembleLocation = f.path;
-				else if (ensembleConfig.ensembleIsInDist)
-					res.theme[themeFileName].ensembleLocation = `node_modules/${f.path}/dist`;
-				else
-					res.theme[themeFileName].ensembleLocation = `node_modules/${f.path}`;
+			split.forEach(s => {
+				entry = entry[s];
 			});
-		}
-	});
+
+			const ensembleConfig = entry['config.json'];
+			if (!ensembleConfig)
+				return;
+
+			if (ensembleConfig.themes) {
+				ensembleConfig.themes.forEach(t => {
+					if (!indexJson.themes.includes[t])
+						indexJson.themes.push(t);
+
+					const themeFileName = t + '.json';
+					const theme = entry.theme[themeFileName];
+
+					const existingTheme = res.theme[themeFileName];
+
+					if (!existingTheme)
+						res.theme[themeFileName] = theme;
+					else {
+						Object.entries(theme).forEach(([kInner, vInner]) => {
+							if (existingTheme[kInner] === undefined)
+								existingTheme[kInner] = vInner;
+						});
+					}
+
+					if (f.external)
+						res.theme[themeFileName].ensembleLocation = f.path;
+					else if (ensembleConfig.ensembleIsInDist)
+						res.theme[themeFileName].ensembleLocation = `node_modules/${f.path}/dist`;
+					else
+						res.theme[themeFileName].ensembleLocation = `node_modules/${f.path}`;
+				});
+			}
+		});
+	}
 
 	delete res.node_modules;
 	delete res['package.json'];
