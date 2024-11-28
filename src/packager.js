@@ -1,5 +1,7 @@
+/* eslint-disable max-len, max-lines-per-function, max-lines, complexity, no-console */
+
 //Imports
-const { resolve, join } = require('path');
+const { resolve } = require('path');
 const { readdir, readFile, writeFile } = require('fs').promises;
 
 //Helpers
@@ -41,8 +43,8 @@ const remapPath = (path, couldContainEnsembles) => {
 
 	if (path.includes('node_modules')) {
 		const subPath = path.substr(path.indexOf('node_modules') + 13);
-		const possibleEnsembleEntry = ensembleNames.find(f => f.path.includes(subPath) || subPath.includes(f.path));
-		if (!possibleEnsembleEntry)
+		const hasEnsembleEntry = ensembleNames.some(f => f.path.includes(subPath) || subPath.includes(f.path));
+		if (!hasEnsembleEntry)
 			return;
 
 		return path;
@@ -104,13 +106,13 @@ async function* getFiles (path, couldContainEnsembles) {
 	}
 }
 
-const init = async opusUiConfig => {
+const init = async useOpusUiConfig => {
 	if (`${process.cwd()}`.includes('\\'))
 		osSlash = '\\';
 	else
 		osSlash = '/';
 
-	ensembleNames = (opusUiConfig.opusUiEnsembles ?? []).map(f => {
+	ensembleNames = (useOpusUiConfig.opusUiEnsembles ?? []).map(f => {
 		const fixedPath = (f.path ?? f).replaceAll('/', osSlash).replaceAll('\\', osSlash);
 
 		return {
@@ -147,11 +149,14 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 
 		let keyPath = path;
 
+		let isRemapped = false;
+
 		if (ensembleNames.some(f => path.includes(f.path + osSlash))) {
 			const remapped = remappedPaths.find(f => path.includes(f.path));
-			if (remapped)
+			if (remapped) {
+				isRemapped = true;
 				keyPath = `${remapped.remappedPath}${osSlash}${path.replace(remapped.path + osSlash, '')}`;
-			else
+			} else
 				keyPath = `dashboard${osSlash}@${path.replace(cwd + osSlash, '')}`;
 		}
 		keyPath = keyPath.replace(cwd, '');
@@ -164,6 +169,11 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 
 		let ensembleIsInDist = false;
 		if (dirs[2] === 'dist') {
+			//If we're using external ensembles and find the built ensemble (in dist)
+			// don't use it as it will override local changes
+			if (isRemapped)
+				continue;
+
 			ensembleIsInDist = true;
 			dirs.splice(2, 1);
 		}
@@ -180,7 +190,7 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 
 		try {
 			json = JSON.parse(file);
-		} catch (e) {
+		} catch {
 			json = {
 				type: 'label',
 				prps: { cpt: `'${path}' is not valid JSON` }
@@ -225,7 +235,7 @@ const getOpusUiConfigFile = async externalOpusUiConfigPath => {
 			throw new Error();
 
 		externalOpusUiConfig = JSON.parse(fetchedExternalOpusUiConfig);
-	} catch (e) {}
+	} catch {}
 
 	if (!isObjectLiteral(externalOpusUiConfig))
 		return null;
@@ -234,17 +244,22 @@ const getOpusUiConfigFile = async externalOpusUiConfigPath => {
 };
 
 const buildOpusUiConfig = async opusAppPackageValue => {
-	const opusUiConfig = {};
+	const res = {};
 
 	// Start with opusUiConfig entries from package.json
 	opusUiConfigKeys.forEach(k => {
-		if (opusAppPackageValue[k]) opusUiConfig[k] = opusAppPackageValue[k];
+		if (opusAppPackageValue[k])
+			res[k] = opusAppPackageValue[k];
 	});
 
-	if (opusAppPackageValue.opusUiConfig && isObjectLiteral(opusAppPackageValue.opusUiConfig)) {
+	if (
+		opusAppPackageValue.opusUiConfig &&
+		isObjectLiteral(opusAppPackageValue.opusUiConfig)
+	) {
 		// Override opusUiConfig entries with those from opusUiConfig object in package.json
 		opusUiConfigKeys.forEach(k => {
-			if (opusAppPackageValue.opusUiConfig[k]) opusUiConfig[k] = opusAppPackageValue.opusUiConfig[k];
+			if (opusAppPackageValue.opusUiConfig[k])
+				res[k] = opusAppPackageValue.opusUiConfig[k];
 		});
 	}
 
@@ -253,19 +268,20 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 	const externalOpusUiConfigData = await getOpusUiConfigFile(externalOpusUiConfigPath);
 
 	if (externalOpusUiConfigData) {
-		// Override opusUiConfig entries with those from external opusUiConfig file.
+		// Override opusUiConfig entries with those from external opusUiConfig file
 		opusUiConfigKeys.forEach(k => {
-			if (externalOpusUiConfigData[k]) opusUiConfig[k] = externalOpusUiConfigData[k];
+			if (externalOpusUiConfigData[k])
+				res[k] = externalOpusUiConfigData[k];
 		});
 	}
 
-	return opusUiConfig;
+	return res;
 };
 
 //Packager
 (async () => {
 	if (args.devmode === 'true')
-		await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+		await new Promise(innerRes => setTimeout(innerRes, 2000));
 
 	console.log('Packaging...');
 	const res = {};
@@ -273,7 +289,7 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 	let packageFile = {};
 	try {
 		packageFile = JSON.parse(await readFile('package.json', 'utf-8'));
-	} catch (e) {}
+	} catch {}
 
 	opusUiConfig = await buildOpusUiConfig(packageFile);
 
