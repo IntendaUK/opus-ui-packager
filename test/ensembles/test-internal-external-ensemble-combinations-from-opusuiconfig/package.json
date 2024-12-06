@@ -1,0 +1,31 @@
+{
+	"name": "test-internal-external-ensemble-combinations-from-opusuiconfig",
+	"opusPackagerConfig": {
+		"appDir": "app",
+		"packagedDir": "public",
+		"packagedFileName": "app"
+	},
+	"opusUiEnsembles": [
+		{
+			"external": true,
+			"path": "/Users/Santino/Code/Intenda/Dev/tools/opus-ui-packager/test/ensembles/test-internal-external-ensemble-combinations/external/ensembleWithoutConfigExternal",
+			"name": "ensembleWithoutConfigExternal"
+		},
+		{
+			"external": false,
+			"path": "ensembleWithoutConfig",
+			"name": "ensembleWithoutConfig"
+		},
+		"anotherEnsembleWithoutConfig"
+	],
+	"nodemonConfig": {
+		"ignore": [],
+		"watch": [
+			"app",
+			"node_modules"
+		],
+		"ext": "js,json,md",
+		"ignoreRoot": [],
+		"delay": 100
+	}
+}

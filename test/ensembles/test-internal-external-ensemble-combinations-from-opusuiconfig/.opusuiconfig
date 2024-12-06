@@ -1,0 +1,15 @@
+{
+    "opusUiEnsembles": [
+        {
+            "external": true,
+            "path": "/Users/Santino/Code/Intenda/Dev/tools/opus-ui-packager/test/ensembles/test-internal-external-ensemble-combinations/external/ensembleWithoutConfigExternal",
+            "name": "ensembleWithoutConfigExternal"
+        },
+        {
+            "external": false,
+            "path": "ensembleWithoutConfig",
+            "name": "ensembleWithoutConfig"
+        },
+        "anotherEnsembleWithoutConfig"
+    ]
+}

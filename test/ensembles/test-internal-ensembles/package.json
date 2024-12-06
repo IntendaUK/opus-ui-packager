@@ -1,0 +1,26 @@
+{
+	"name": "test-internal-ensembles",
+	"opusPackagerConfig": {
+		"appDir": "app",
+		"packagedDir": "public",
+		"packagedFileName": "app"
+	},
+	"opusUiEnsembles": [
+		"ensembleWithoutConfig",
+		{
+			"external": false,
+			"path": "anotherEnsembleWithoutConfig",
+			"name": "anotherEnsembleWithoutConfig"
+		}
+	],
+	"nodemonConfig": {
+		"ignore": [],
+		"watch": [
+			"app",
+			"node_modules"
+		],
+		"ext": "js,json,md",
+		"ignoreRoot": [],
+		"delay": 100
+	}
+}

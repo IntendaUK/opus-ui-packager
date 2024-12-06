@@ -1,0 +1,18 @@
+{
+	"name": "test-external-ensembles-from-opusuiconfig",
+	"opusPackagerConfig": {
+		"appDir": "app",
+		"packagedDir": "public",
+		"packagedFileName": "app"
+	},
+	"nodemonConfig": {
+		"ignore": [],
+		"watch": [
+			"app",
+			"node_modules"
+		],
+		"ext": "js,json,md",
+		"ignoreRoot": [],
+		"delay": 100
+	}
+}

@@ -1,0 +1,17 @@
+{
+	"acceptPrps": {},
+	"traits": [
+		{
+			"trait": "@ensembleWithoutConfig/input/index",
+			"traitPrps": {
+				"placeholder": "Enter a value..."
+			}
+		},
+		{
+			"trait": "@anotherEnsembleWithoutConfig/input/index",
+			"traitPrps": {
+				"placeholder": "Enter a value..."
+			}
+		}
+	]
+}

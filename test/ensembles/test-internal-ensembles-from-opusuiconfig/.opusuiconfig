@@ -1,0 +1,10 @@
+{
+    "opusUiEnsembles": [
+        "ensembleWithoutConfig",
+        {
+            "external": false,
+            "path": "anotherEnsembleWithoutConfig",
+            "name": "anotherEnsembleWithoutConfig"
+        }
+    ]
+}

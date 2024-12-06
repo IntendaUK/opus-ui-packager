@@ -1,0 +1,9 @@
+{
+	"acceptPrps": {},
+	"traits": [
+		{
+			"trait": "components/appTitle",
+			"traitPrps": {}
+		}
+	]
+}

@@ -1,0 +1,9 @@
+{
+	"acceptPrps": {
+		"label": "string"
+	},
+	"type": "input",
+	"prps": {
+		"placeholder": "placeholder"
+	}
+}

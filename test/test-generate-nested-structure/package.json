@@ -1,0 +1,19 @@
+{
+	"name": "test-generate-nested-structure",
+	"opusPackagerConfig": {
+		"appDir": "app",
+		"packagedDir": "public",
+		"packagedFileName": "app"
+	},
+	"opusUiEnsembles": [],
+	"nodemonConfig": {
+		"ignore": [],
+		"watch": [
+			"app",
+			"node_modules"
+		],
+		"ext": "js,json,md",
+		"ignoreRoot": [],
+		"delay": 100
+	}
+}
