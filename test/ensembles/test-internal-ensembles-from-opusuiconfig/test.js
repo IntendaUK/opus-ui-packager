@@ -13,18 +13,27 @@ const expectedOutput = {
         },
         "rootDashboard.json": {
             "acceptPrps": {},
-            "traits": [
+            "type": "containerSimple",
+            "wgts": [
                 {
-                    "trait": "@ensembleWithoutConfig/input/index",
-                    "traitPrps": {
-                        "placeholder": "Enter a value inside ensembleWithoutConfig..."
-                    }
+                    "traits": [
+                        {
+                            "trait": "@ensembleWithoutConfig/input/index",
+                            "traitPrps": {
+                                "placeholder": "Enter a value inside ensembleWithoutConfig..."
+                            }
+                        }
+                    ]
                 },
                 {
-                    "trait": "@anotherEnsembleWithoutConfig/input/index",
-                    "traitPrps": {
-                        "placeholder": "Enter a value inside anotherEnsembleWithoutConfig..."
-                    }
+                    "traits": [
+                        {
+                            "trait": "@anotherEnsembleWithoutConfig/input/index",
+                            "traitPrps": {
+                                "placeholder": "Enter a value inside anotherEnsembleWithoutConfig..."
+                            }
+                        }
+                    ]
                 }
             ]
         },
@@ -36,7 +45,8 @@ const expectedOutput = {
                     },
                     "type": "input",
                     "prps": {
-                        "placeholder": "%placeholder%"
+                        "placeholder": "%placeholder%",
+                        "minWidth": "500px"
                     }
                 }
             }
@@ -49,7 +59,8 @@ const expectedOutput = {
                     },
                     "type": "input",
                     "prps": {
-                        "placeholder": "%placeholder%"
+                        "placeholder": "%placeholder%",
+                        "minWidth": "500px"
                     }
                 }
             }
@@ -62,8 +73,7 @@ const expectedOutput = {
         "global.json": {
             "themeConfig": {
                 "isStyleTheme": false
-            },
-            "initialValue": "Jon Doe"
+            }
         }
     }
 };

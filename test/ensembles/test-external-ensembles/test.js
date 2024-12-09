@@ -13,12 +13,17 @@ const expectedOutput = {
         },
         "rootDashboard.json": {
             "acceptPrps": {},
-            "traits": [
+            "type": "containerSimple",
+            "wgts": [
                 {
-                    "trait": "@ensembleWithoutConfig/input/index",
-                    "traitPrps": {
-                        "placeholder": "Enter a value..."
-                    }
+                    "traits": [
+                        {
+                            "trait": "@ensembleWithoutConfig/input/index",
+                            "traitPrps": {
+                                "placeholder": "Enter a value inside ensembleWithoutConfig..."
+                            }
+                        }
+                    ]
                 }
             ]
         },
@@ -30,7 +35,8 @@ const expectedOutput = {
                     },
                     "type": "input",
                     "prps": {
-                        "placeholder": "%placeholder%"
+                        "placeholder": "%placeholder%",
+                        "minWidth": "500px"
                     }
                 }
             }
@@ -43,8 +49,7 @@ const expectedOutput = {
         "global.json": {
             "themeConfig": {
                 "isStyleTheme": false
-            },
-            "initialValue": "Jon Doe"
+            }
         }
     }
 };

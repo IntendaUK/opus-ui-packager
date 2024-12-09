@@ -8,7 +8,7 @@ const expectedOutput = {
                 "acceptPrps": {},
                 "type": "label",
                 "prps": {
-                    "caption": "{theme.global.welcomeText}",
+                    "cpt": "{theme.global.welcomeText}",
                     "color": "themeRed"
                 }
             }
@@ -23,10 +23,15 @@ const expectedOutput = {
         },
         "rootDashboard.json": {
             "acceptPrps": {},
-            "traits": [
+            "type": "containerSimple",
+            "wgts": [
                 {
-                    "trait": "components/appTitle",
-                    "traitPrps": {}
+                    "traits": [
+                        {
+                            "trait": "components/appTitle",
+                            "traitPrps": {}
+                        }
+                    ]
                 }
             ]
         }
