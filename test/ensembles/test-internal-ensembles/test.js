@@ -32,11 +32,11 @@ const expectedOutput = {
             "input": {
                 "index.json": {
                     "acceptPrps": {
-                        "label": "string"
+                        "placeholder": "string"
                     },
                     "type": "input",
                     "prps": {
-                        "placeholder": "placeholder"
+                        "placeholder": "%placeholder%"
                     }
                 }
             }
@@ -45,11 +45,11 @@ const expectedOutput = {
             "input": {
                 "index.json": {
                     "acceptPrps": {
-                        "label": "string"
+                        "placeholder": "string"
                     },
                     "type": "input",
                     "prps": {
-                        "placeholder": "placeholder"
+                        "placeholder": "%placeholder%"
                     }
                 }
             }

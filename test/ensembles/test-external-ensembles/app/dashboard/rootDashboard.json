@@ -1,11 +1,16 @@
 {
 	"acceptPrps": {},
-	"traits": [
+	"type": "containerSimple",
+	"wgts": [
 		{
-			"trait": "@ensembleWithoutConfig/input/index",
-			"traitPrps": {
-				"placeholder": "Enter a value..."
-			}
+			"traits": [
+				{
+					"trait": "@ensembleWithoutConfig/input/index",
+					"traitPrps": {
+						"placeholder": "Enter a value inside ensembleWithoutConfig..."
+					}
+				}
+			]
 		}
 	]
 }

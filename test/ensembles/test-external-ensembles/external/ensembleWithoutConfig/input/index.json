@@ -1,9 +1,10 @@
 {
 	"acceptPrps": {
-		"label": "string"
+		"placeholder": "string"
 	},
 	"type": "input",
 	"prps": {
-		"placeholder": "placeholder"
+		"placeholder": "%placeholder%",
+		"minWidth": "500px"
 	}
 }

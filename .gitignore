@@ -1,4 +1,4 @@
-**/node_modules
+/node_modules
 **/app.json
 **/package-lock.json
 **/.DS_Store

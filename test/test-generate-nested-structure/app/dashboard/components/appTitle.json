@@ -2,7 +2,7 @@
 	"acceptPrps": {},
 	"type": "label",
 	"prps": {
-		"caption": "{theme.global.welcomeText}",
+		"cpt": "{theme.global.welcomeText}",
 		"color": "themeRed"
 	}
 }

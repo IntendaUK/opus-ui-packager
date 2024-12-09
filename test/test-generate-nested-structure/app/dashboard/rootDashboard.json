@@ -1,9 +1,14 @@
 {
 	"acceptPrps": {},
-	"traits": [
+	"type": "containerSimple",
+	"wgts": [
 		{
-			"trait": "components/appTitle",
-			"traitPrps": {}
+			"traits": [
+				{
+					"trait": "components/appTitle",
+					"traitPrps": {}
+				}
+			]
 		}
 	]
 }
