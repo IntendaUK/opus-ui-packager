@@ -32,6 +32,7 @@ let opusUiConfig;
 let ensembleNames;
 let remappedPaths = [];
 const excludeEnsembles = args.excludeEnsembles === 'true';
+const includePaths = args.includePaths === 'true';
 
 const opusUiConfigFileName = '.opusUiConfig';
 const opusUiConfigKeys = ['opusPackagerConfig', 'opusUiComponentLibraries', 'opusUiEnsembles', 'opusUiColorThemes'];
@@ -123,20 +124,33 @@ const init = async useOpusUiConfig => {
 	});
 };
 
-const setPathsOnViewports = (obj, viewportPath) => {
-	if (obj.type === 'viewport') {
-		if (!obj.prps)
-			obj.prps = {};
+const setPathsOnComponents = (rootObj, path) => {
+	const stack = [rootObj];
 
-		obj.prps.path = viewportPath;
+	while (stack.length > 0) {
+		const currentObj = stack.pop();
+
+		if (!currentObj.prps)
+			currentObj.prps = {};
+
+		currentObj.prps.path = path.replaceAll('\\', '/');
+
+		for (const key of Object.keys(currentObj)) {
+			const value = currentObj[key];
+
+			if (
+				typeof value === 'object' &&
+				value !== null &&
+				(
+					value.prps !== undefined ||
+					value.acceptPrps !== undefined ||
+					value.traits !== undefined ||
+					key === 'wgts'
+				)
+			)
+				stack.push(value);
+		}
 	}
-
-	Object.values(obj).forEach(v => {
-		if (typeof(v) !== 'object' || v === null)
-			return;
-
-		setPathsOnViewports(v, viewportPath);
-	});
 };
 
 const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
@@ -192,14 +206,14 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 			json = JSON.parse(file);
 		} catch {
 			json = {
+				acceptPrps: {},
 				type: 'label',
 				prps: { cpt: `'${path}' is not valid JSON` }
 			};
 		}
 
-		const viewportPath = dirs.join('/').replace('dashboard/', '');
-
-		setPathsOnViewports(json, viewportPath);
+		if (includePaths)
+			setPathsOnComponents(json, keyPath);
 
 		accessor[key] = json;
 		if (ensembleIsInDist && dirs.length === 2 && key === 'config.json')

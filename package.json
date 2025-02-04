@@ -1,6 +1,6 @@
 {
 	"name": "@intenda/opus-ui-packager",
-	"version": "1.5.1",
+	"version": "1.6.0",
 	"description": "Opus UI Packager",
 	"author": "intenda",
 	"main": "src/packager.js",
