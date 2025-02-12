@@ -3,10 +3,10 @@
 //Imports
 const { extname, resolve } = require('path');
 const { readdir, readFile, writeFile } = require('fs').promises;
-require('colors');
+const fdir = require('fdir');
 
 //Helpers
-const recurseProcessMda = require('./packager/recurseProcessMda');
+const fixRelativePaths = require('./packager/fixRelativePaths');
 
 const timeStart = process.hrtime();
 
@@ -299,7 +299,7 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 	if (args.devmode === 'true')
 		await new Promise(innerRes => setTimeout(innerRes, 2000));
 
-	console.log('Packaging...'.brightMagenta);
+	console.log('Packaging...');
 	const res = {};
 
 	let packageFile = {};
@@ -458,7 +458,7 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 		}
 	}
 
-	recurseProcessMda(res);
+	fixRelativePaths(res);
 
 	let packagedFileContents = JSON.stringify(res);
 
@@ -470,5 +470,5 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 	const timeDiff = process.hrtime(timeStart);
 	const elapsedMs = ~~(timeDiff[1] / 1e6);
 
-	console.log(`...completed (${elapsedMs}ms)`.magenta);
+	console.log(`...completed (${elapsedMs}ms)`);
 })();

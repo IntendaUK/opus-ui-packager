@@ -1,6 +1,6 @@
 {
 	"name": "@intenda/opus-ui-packager",
-	"version": "1.6.0",
+	"version": "1.6.1",
 	"description": "Opus UI Packager",
 	"author": "intenda",
 	"main": "src/packager.js",
@@ -20,8 +20,8 @@
 		"fuzzy-matching": "^0.4.3"
 	},
 	"devDependencies": {
-		"eslint": "^7.32.0",
 		"babel-eslint": "^10.1.0",
+		"eslint": "^7.32.0",
 		"eslint-plugin-prettier": "^3.4.0"
 	},
 	"publishConfig": {
