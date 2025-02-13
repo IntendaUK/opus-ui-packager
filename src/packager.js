@@ -126,10 +126,12 @@ const setPathsOnComponents = (rootObj, path) => {
 	while (stack.length > 0) {
 		const currentObj = stack.pop();
 
-		if (!currentObj.prps)
-			currentObj.prps = {};
+		if (includePaths || currentObj.type === 'viewport') {
+			if (!currentObj.prps)
+				currentObj.prps = {};
 
-		currentObj.prps.path = path.replaceAll('\\', '/');
+			currentObj.prps.path = path.replaceAll('\\', '/');
+		}
 
 		for (const key of Object.keys(currentObj)) {
 			const value = currentObj[key];
@@ -207,9 +209,8 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 				};
 			}
 
-			// Optionally set paths on the JSON components.
-			if (includePaths)
-				setPathsOnComponents(json, keyPath);
+			//Optionally set paths on the JSON components (always on viewports)
+			setPathsOnComponents(json, keyPath);
 
 			accessor[key] = json;
 
