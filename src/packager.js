@@ -459,7 +459,13 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 		}
 	}
 
-	recurseProcessMda(res);
+	recurseProcessMda.init({
+		fullMda: res,
+		remappedPaths
+	});
+	recurseProcessMda.run(res);
+
+	await recurseProcessMda.waitForCompletion();
 
 	let packagedFileContents = JSON.stringify(res);
 

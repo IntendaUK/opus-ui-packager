@@ -1,4 +1,10 @@
 /* eslint-disable max-lines-per-function, complexity */
+const { readFile } = require('fs').promises;
+const babel = require('@babel/core');
+
+let fullMda;
+let remappedPaths;
+let promisesToAwait;
 
 const getMappedPath = (traitPath, currentPath) => {
 	traitPath = traitPath.slice(2);
@@ -29,13 +35,82 @@ const getCurrentPath = fullPath => {
 	return fullPath.slice(start, lastSlashBeforeJson);
 };
 
+const init = ({ fullMda: _fullMda, remappedPaths: _remappedPaths }) => {
+	fullMda = _fullMda;
+	remappedPaths = _remappedPaths;
+
+	promisesToAwait = [];
+};
+
 const recurseProcessMda = (mda, parentMda, fullPath = '') => {
+	let currentPath;
+
 	if (mda.inlineKeys !== undefined) {
 		mda.inlineKeys.forEach(k => {
 			mda[k] = mda[k].join(' ');
 		});
 
 		delete mda.inlineKeys;
+	}
+
+	if (mda.srcActions !== undefined) {
+		if (!currentPath)
+			currentPath = getCurrentPath(fullPath);
+
+		const newPath = getMappedPath(mda.srcActions, currentPath);
+
+		const splitAccessor = newPath.split('/');
+		const fileName = splitAccessor.pop() + '.js';
+
+		const parentOfFile = splitAccessor.reduce((p, n) => p[n], fullMda.dashboard);
+
+		const remappedEntry = remappedPaths.find(f => `dashboard\\${splitAccessor.join('\\')}` === f.remappedPath);
+		const importPath = `${remappedEntry?.path ?? newPath}/${fileName}`;
+
+		if (!parentOfFile[fileName]) {
+			promisesToAwait.push((async () => {
+				const fileString = (await readFile(importPath, 'utf-8'));
+
+				parentOfFile[fileName] = fileString;
+			})());
+		}
+
+		mda.srcActions = {
+			path: newPath
+		};
+	}
+
+	if (mda.src !== undefined && mda.prps !== undefined) {
+		if (!currentPath)
+			currentPath = getCurrentPath(fullPath);
+
+		const newPath = getMappedPath(mda.src, currentPath);
+
+		const splitAccessor = newPath.split('/');
+		const fileName = splitAccessor.pop() + '.jsx';
+
+		const parentOfFile = splitAccessor.reduce((p, n) => p[n], fullMda.dashboard);
+
+		const remappedEntry = remappedPaths.find(f => `dashboard\\${splitAccessor.join('\\')}` === f.remappedPath);
+		const importPath = `${remappedEntry?.path ?? newPath}/${fileName}`;
+
+		if (!parentOfFile[fileName]) {
+			promisesToAwait.push((async () => {
+				const fileString = (await readFile(importPath, 'utf-8'));
+
+				const { code } = babel.transformSync(fileString, {
+					presets: ['@babel/preset-react'],
+					sourceType: 'module'
+				});
+
+				parentOfFile[fileName] = code;
+			})());
+		}
+
+		mda.src = {
+			path: newPath,
+			loadFromMda: true
+		};
 	}
 
 	Object.entries(mda).forEach(([k, v]) => {
@@ -47,7 +122,8 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 		const { traits, trait } = mda;
 
 		if (traits && typeof(traits) !== 'string' && traits.map !== undefined) {
-			const currentPath = getCurrentPath(fullPath);
+			if (!currentPath)
+				currentPath = getCurrentPath(fullPath);
 
 			const len = traits.length;
 			for (let i = 0; i < len; i++) {
@@ -71,11 +147,17 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 
 			pathArray.pop();
 
-			const currentPath = pathArray.join('/');
-
-			mda.trait = getMappedPath(trait, currentPath);
+			mda.trait = getMappedPath(trait, pathArray.join('/'));
 		}
 	}
 };
 
-module.exports = recurseProcessMda;
+const waitForCompletion = async () => {
+	await Promise.all(promisesToAwait);
+};
+
+module.exports = {
+	init,
+	run: recurseProcessMda,
+	waitForCompletion
+};
