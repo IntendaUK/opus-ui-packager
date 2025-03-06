@@ -2,11 +2,15 @@
 const { readFile } = require('fs').promises;
 const babel = require('@babel/core');
 
+let appDir;
 let fullMda;
 let remappedPaths;
 let promisesToAwait;
 
 const getMappedPath = (traitPath, currentPath) => {
+	if (!traitPath.startsWith('./'))
+		return traitPath;
+
 	traitPath = traitPath.slice(2);
 
 	let levelsUp = 0;
@@ -24,7 +28,7 @@ const getMappedPath = (traitPath, currentPath) => {
 
 	const prefix = segments.join('/');
 
-	return prefix + (traitPath[0] === '/' ? '' : '/') + traitPath;
+	return prefix + (traitPath[0] === '/' || prefix === '' ? '' : '/') + traitPath;
 };
 
 const getCurrentPath = fullPath => {
@@ -35,7 +39,8 @@ const getCurrentPath = fullPath => {
 	return fullPath.slice(start, lastSlashBeforeJson);
 };
 
-const init = ({ fullMda: _fullMda, remappedPaths: _remappedPaths }) => {
+const init = ({ fullMda: _fullMda, remappedPaths: _remappedPaths, appDir: _appDir }) => {
+	appDir = _appDir;
 	fullMda = _fullMda;
 	remappedPaths = _remappedPaths;
 
@@ -57,15 +62,26 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 		if (!currentPath)
 			currentPath = getCurrentPath(fullPath);
 
-		const newPath = getMappedPath(mda.srcActions, currentPath);
+		let newPath = getMappedPath(mda.srcActions, currentPath);
+		if (newPath[0] === '/')
+			newPath = newPath.substr(1);
 
 		const splitAccessor = newPath.split('/');
 		const fileName = splitAccessor.pop() + '.js';
+		
+		const parentOfFile = splitAccessor.reduce((p, n, i) => {
+			if (i !== splitAccessor.length - 1 && !p[n])
+				p[n] = {};
 
-		const parentOfFile = splitAccessor.reduce((p, n) => p[n], fullMda.dashboard);
+			return p[n];
+		}, fullMda.dashboard);
 
 		const remappedEntry = remappedPaths.find(f => `dashboard\\${splitAccessor.join('\\')}` === f.remappedPath);
-		const importPath = `${remappedEntry?.path ?? newPath}/${fileName}`;
+		let importPath;
+		if (remappedEntry)
+			importPath = `${remappedEntry?.path ?? newPath}/${fileName}`;
+		else
+			importPath = `${appDir}/dashboard/${newPath}.js`;
 
 		if (!parentOfFile[fileName]) {
 			promisesToAwait.push((async () => {
@@ -89,10 +105,19 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 		const splitAccessor = newPath.split('/');
 		const fileName = splitAccessor.pop() + '.jsx';
 
-		const parentOfFile = splitAccessor.reduce((p, n) => p[n], fullMda.dashboard);
+		const parentOfFile = splitAccessor.reduce((p, n) => {
+			if (!n)
+				return p;
+
+			return p[n];
+		}, fullMda.dashboard);
 
 		const remappedEntry = remappedPaths.find(f => `dashboard\\${splitAccessor.join('\\')}` === f.remappedPath);
-		const importPath = `${remappedEntry?.path ?? newPath}/${fileName}`;
+		let importPath;
+		if (remappedEntry)
+			importPath = `${remappedEntry.path}/${fileName}`;
+		else
+			importPath = `${appDir}/dashboard/${newPath}.jsx`; 
 
 		if (!parentOfFile[fileName]) {
 			promisesToAwait.push((async () => {

@@ -460,6 +460,7 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 	}
 
 	recurseProcessMda.init({
+		appDir,
 		fullMda: res,
 		remappedPaths
 	});
