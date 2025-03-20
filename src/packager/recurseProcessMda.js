@@ -69,8 +69,8 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 		const splitAccessor = newPath.split('/');
 		const fileName = splitAccessor.pop() + '.js';
 		
-		const parentOfFile = splitAccessor.reduce((p, n, i) => {
-			if (i !== splitAccessor.length - 1 && !p[n])
+		const parentOfFile = splitAccessor.reduce((p, n) => {
+			if (!p[n])
 				p[n] = {};
 
 			return p[n];
@@ -108,6 +108,9 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 		const parentOfFile = splitAccessor.reduce((p, n) => {
 			if (!n)
 				return p;
+
+			if (!p[n])
+				p[n] = {};
 
 			return p[n];
 		}, fullMda.dashboard);
