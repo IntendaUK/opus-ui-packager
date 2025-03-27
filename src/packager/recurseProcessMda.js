@@ -6,6 +6,7 @@ let appDir;
 let fullMda;
 let remappedPaths;
 let promisesToAwait;
+let generateTestIds;
 
 const getMappedPath = (traitPath, currentPath) => {
 	if (!traitPath.startsWith('./'))
@@ -39,12 +40,66 @@ const getCurrentPath = fullPath => {
 	return fullPath.slice(start, lastSlashBeforeJson);
 };
 
-const init = ({ fullMda: _fullMda, remappedPaths: _remappedPaths, appDir: _appDir }) => {
+const init = ({
+	fullMda: _fullMda,
+	remappedPaths: _remappedPaths,
+	appDir: _appDir,
+	generateTestIds: _generateTestIds
+}) => {
 	appDir = _appDir;
 	fullMda = _fullMda;
 	remappedPaths = _remappedPaths;
+	generateTestIds = _generateTestIds;
 
 	promisesToAwait = [];
+};
+
+const addTestIdToNode = (mda, parentMda, fullPath) => {
+	const shouldAddTestId = (
+		(
+			mda.type &&
+			//Don't give to script actions
+			mda.value === undefined &&
+			mda.storeAsVariable === undefined
+		) ||
+		mda.traits ||
+		(
+			mda.acceptPrps &&
+			(
+				mda.type ||
+				mda.wgts
+			)
+		)
+	);
+
+	if (!shouldAddTestId)
+		return;
+
+	let testId = fullPath;
+	if (testId.indexOf('/dashboard/') === 0)
+		testId = testId.substr(11);
+
+	if (testId.endsWith('/index.json'))
+		testId = testId.substr(0, testId.length - 11);
+
+	if (testId.endsWith('.json'))
+		testId = testId.substr(0, testId.length - 5) + '/';
+
+	testId = testId
+		.replaceAll('wgts/', 'w/')
+		.replaceAll('visual/', 'v/')
+		.replaceAll('functional/', '')
+		.replace('.json', '');
+
+	if (!mda.prps)
+		mda.prps = {};
+
+	if (!mda.prps.attrs)
+		mda.prps.attrs = [];
+
+	mda.prps.attrs.push('data-testid');
+
+	mda.prps['data-testid'] = testId;
 };
 
 const recurseProcessMda = (mda, parentMda, fullPath = '') => {
@@ -178,6 +233,9 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 			mda.trait = getMappedPath(trait, pathArray.join('/'));
 		}
 	}
+
+	if (generateTestIds)
+		addTestIdToNode(mda, parentMda, fullPath);
 };
 
 const waitForCompletion = async () => {

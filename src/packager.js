@@ -33,8 +33,10 @@ let osSlash = '/';
 let opusUiConfig;
 let ensembleNames;
 let remappedPaths = [];
+
 const excludeEnsembles = args.excludeEnsembles === 'true';
 const includePaths = args.includePaths === 'true';
+const generateTestIds = args.generateTestIds === 'true';
 
 const opusUiConfigFileName = '.opusUiConfig';
 const opusUiConfigKeys = ['opusPackagerConfig', 'opusUiComponentLibraries', 'opusUiEnsembles', 'opusUiColorThemes'];
@@ -462,7 +464,8 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 	recurseProcessMda.init({
 		appDir,
 		fullMda: res,
-		remappedPaths
+		remappedPaths,
+		generateTestIds
 	});
 	recurseProcessMda.run(res);
 
