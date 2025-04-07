@@ -112,7 +112,6 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 
 		delete mda.inlineKeys;
 	}
-
 	if (mda.srcActions !== undefined) {
 		if (!currentPath)
 			currentPath = getCurrentPath(fullPath);
@@ -131,10 +130,10 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 			return p[n];
 		}, fullMda.dashboard);
 
-		const remappedEntry = remappedPaths.find(f => `dashboard\\${splitAccessor.join('\\')}` === f.remappedPath);
+		const remappedEntry = remappedPaths.find(f => `dashboard\\${splitAccessor[0]}` === f.remappedPath);
 		let importPath;
 		if (remappedEntry)
-			importPath = `${remappedEntry?.path ?? newPath}/${fileName}`;
+			importPath = `${remappedEntry.path}/${splitAccessor.slice(1).join('/')}/${fileName}`;
 		else
 			importPath = `${appDir}/dashboard/${newPath}.js`;
 
@@ -170,12 +169,12 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 			return p[n];
 		}, fullMda.dashboard);
 
-		const remappedEntry = remappedPaths.find(f => `dashboard\\${splitAccessor.join('\\')}` === f.remappedPath);
+		const remappedEntry = remappedPaths.find(f => `dashboard\\${splitAccessor[0]}` === f.remappedPath);
 		let importPath;
 		if (remappedEntry)
-			importPath = `${remappedEntry.path}/${fileName}`;
+			importPath = `${remappedEntry.path}/${splitAccessor.slice(1).join('/')}/${fileName}`;
 		else
-			importPath = `${appDir}/dashboard/${newPath}.jsx`; 
+			importPath = `${appDir}/dashboard/${newPath}.jsx`;
 
 		if (!parentOfFile[fileName]) {
 			promisesToAwait.push((async () => {
