@@ -465,7 +465,8 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 		appDir,
 		fullMda: res,
 		remappedPaths,
-		generateTestIds
+		generateTestIds,
+		ensembleNames
 	});
 	recurseProcessMda.run(res);
 

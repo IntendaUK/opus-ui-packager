@@ -6,6 +6,7 @@ const babel = require('@babel/core');
 let appDir;
 let fullMda;
 let remappedPaths;
+let ensembleNames;
 let promisesToAwait;
 let generateTestIds;
 
@@ -44,12 +45,14 @@ const getCurrentPath = fullPath => {
 const init = ({
 	fullMda: _fullMda,
 	remappedPaths: _remappedPaths,
+	ensembleNames: _ensembleNames,
 	appDir: _appDir,
 	generateTestIds: _generateTestIds
 }) => {
 	appDir = _appDir;
 	fullMda = _fullMda;
 	remappedPaths = _remappedPaths;
+	ensembleNames = _ensembleNames;
 	generateTestIds = _generateTestIds;
 
 	promisesToAwait = [];
@@ -135,8 +138,12 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 		let importPath;
 		if (remappedEntry)
 			importPath = `${remappedEntry.path}/${splitAccessor.slice(1).join('/')}/${fileName}`;
-		else
-			importPath = `${appDir}/dashboard/${newPath}.js`;
+		else {
+			if (ensembleNames.some(f => splitAccessor[0] === `@${f.name}`))
+				importPath = path.join(process.cwd(), 'node_modules', `${newPath.substr(1)}.js`);
+			else
+				importPath = `${appDir}/dashboard/${newPath}.js`;
+		}
 
 		if (!parentOfFile[fileName]) {
 			promisesToAwait.push((async () => {
@@ -174,8 +181,12 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 		let importPath;
 		if (remappedEntry)
 			importPath = `${remappedEntry.path}/${splitAccessor.slice(1).join('/')}/${fileName}`;
-		else
-			importPath = `${appDir}/dashboard/${newPath}.jsx`;
+		else {
+			if (ensembleNames.some(f => splitAccessor[0] === `@${f.name}`))
+				importPath = path.join(process.cwd(), 'node_modules', `${newPath.substr(1)}.jsx`);
+			else
+				importPath = `${appDir}/dashboard/${newPath}.jsx`;
+		}
 
 		if (!parentOfFile[fileName]) {
 			promisesToAwait.push((async () => {
