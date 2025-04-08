@@ -1,4 +1,5 @@
 /* eslint-disable max-lines-per-function, complexity */
+const path = require('path');
 const { readFile } = require('fs').promises;
 const babel = require('@babel/core');
 
@@ -130,7 +131,7 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 			return p[n];
 		}, fullMda.dashboard);
 
-		const remappedEntry = remappedPaths.find(f => `dashboard\\${splitAccessor[0]}` === f.remappedPath);
+		const remappedEntry = remappedPaths.find(f => `dashboard\\${splitAccessor[0]}` === f.remappedPath.replace('/', '\\'));
 		let importPath;
 		if (remappedEntry)
 			importPath = `${remappedEntry.path}/${splitAccessor.slice(1).join('/')}/${fileName}`;
@@ -169,7 +170,7 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 			return p[n];
 		}, fullMda.dashboard);
 
-		const remappedEntry = remappedPaths.find(f => `dashboard\\${splitAccessor[0]}` === f.remappedPath);
+		const remappedEntry = remappedPaths.find(f => `dashboard\\${splitAccessor[0]}` === f.remappedPath.replace('/', '\\'));
 		let importPath;
 		if (remappedEntry)
 			importPath = `${remappedEntry.path}/${splitAccessor.slice(1).join('/')}/${fileName}`;
