@@ -142,7 +142,7 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 			if (ensembleNames.some(f => splitAccessor[0] === `@${f.name}`))
 				importPath = path.join(process.cwd(), 'node_modules', `${newPath.substr(1)}.js`);
 			else
-				importPath = `${appDir}/dashboard/${newPath}.js`;
+				importPath = path.join(process.cwd(), appDir, 'dashboard', newPath + '.js');
 		}
 
 		if (!parentOfFile[fileName]) {
@@ -154,6 +154,46 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 		}
 
 		mda.srcActions = {
+			path: newPath
+		};
+	} else if (mda.srcAction !== undefined) {
+		if (!currentPath)
+			currentPath = getCurrentPath(fullPath);
+
+		let newPath = getMappedPath(mda.srcAction, currentPath);
+		if (newPath[0] === '/')
+			newPath = newPath.substr(1);
+
+		const splitAccessor = newPath.split('/');
+		const fileName = splitAccessor.pop() + '.js';
+		
+		const parentOfFile = splitAccessor.reduce((p, n) => {
+			if (!p[n])
+				p[n] = {};
+
+			return p[n];
+		}, fullMda.dashboard);
+
+		const remappedEntry = remappedPaths.find(f => `dashboard\\${splitAccessor[0]}` === f.remappedPath.replace('/', '\\'));
+		let importPath;
+		if (remappedEntry)
+			importPath = `${remappedEntry.path}/${splitAccessor.slice(1).join('/')}/${fileName}`;
+		else {
+			if (ensembleNames.some(f => splitAccessor[0] === `@${f.name}`))
+				importPath = path.join(process.cwd(), 'node_modules', `${newPath.substr(1)}.js`);
+			else
+				importPath = path.join(process.cwd(), appDir, 'dashboard', newPath + '.js');
+		}
+
+		if (!parentOfFile[fileName]) {
+			promisesToAwait.push((async () => {
+				const fileString = (await readFile(importPath, 'utf-8'));
+
+				parentOfFile[fileName] = fileString;
+			})());
+		}
+
+		mda.srcAction = {
 			path: newPath
 		};
 	}
@@ -184,8 +224,8 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 		else {
 			if (ensembleNames.some(f => splitAccessor[0] === `@${f.name}`))
 				importPath = path.join(process.cwd(), 'node_modules', `${newPath.substr(1)}.jsx`);
-			else
-				importPath = `${appDir}/dashboard/${newPath}.jsx`;
+			else 
+				importPath = path.join(process.cwd(), appDir, 'dashboard', newPath + '.jsx');
 		}
 
 		if (!parentOfFile[fileName]) {
