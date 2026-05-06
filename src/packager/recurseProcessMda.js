@@ -59,6 +59,14 @@ const init = ({
 };
 
 const addTestIdToNode = (mda, parentMda, fullPath) => {
+	const hasTestId = (
+		mda.prps?.attrs?.includes('data-testid') ||
+		mda.prps?.['data-testid'] !== undefined
+	);
+
+	if (hasTestId)
+		return;
+
 	const shouldAddTestId = (
 		(
 			mda.type &&
