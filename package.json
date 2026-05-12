@@ -17,6 +17,7 @@
 	"dependencies": {
 		"color-json": "2.0.0",
 		"colors": "^1.4.0",
+		"esbuild": "^0.25.12",
 		"fuzzy-matching": "^0.4.3"
 	},
 	"devDependencies": {
