@@ -1,7 +1,9 @@
 /* eslint-disable max-lines-per-function, complexity */
 const path = require('path');
+const { existsSync } = require('fs');
 const { readFile } = require('fs').promises;
 const babel = require('@babel/core');
+const esbuild = require('esbuild');
 
 let appDir;
 let fullMda;
@@ -9,6 +11,7 @@ let remappedPaths;
 let ensembleNames;
 let promisesToAwait;
 let generateTestIds;
+let bundledSourceActions;
 
 const getMappedPath = (traitPath, currentPath) => {
 	if (!traitPath.startsWith('./'))
@@ -56,6 +59,163 @@ const init = ({
 	generateTestIds = _generateTestIds;
 
 	promisesToAwait = [];
+	bundledSourceActions = {};
+};
+
+const getPackagedFileParent = splitAccessor => {
+	return splitAccessor.reduce((p, n) => {
+		if (!p[n])
+			p[n] = {};
+
+		return p[n];
+	}, fullMda.dashboard);
+};
+
+const getRemappedEntry = splitAccessor => {
+	return remappedPaths.find(f => {
+		return `dashboard\\${splitAccessor[0]}` === f.remappedPath.replace('/', '\\');
+	});
+};
+
+const getEnsembleEntry = ensembleName => {
+	return ensembleNames.find(f => ensembleName === f.name);
+};
+
+const getConfiguredEnsembleImport = importPath => {
+	const [ensembleName, ...rest] = importPath.substr(1).split('/');
+	const ensembleEntry = getEnsembleEntry(ensembleName);
+
+	if (!ensembleEntry)
+		return;
+
+	return {
+		ensembleEntry,
+		ensembleName,
+		rest
+	};
+};
+
+const getConfiguredEnsembleBasePath = ({ ensembleEntry, ensembleName }) => {
+	if (ensembleEntry.external)
+		return ensembleEntry.path;
+
+	return path.join(process.cwd(), 'node_modules', ensembleEntry.path ?? ensembleName);
+};
+
+const getSourceActionImportPath = ({ newPath, splitAccessor, fileName }) => {
+	const remappedEntry = getRemappedEntry(splitAccessor);
+	if (remappedEntry)
+		return `${remappedEntry.path}/${splitAccessor.slice(1).join('/')}/${fileName}`;
+
+	const firstSegment = splitAccessor[0];
+	if (firstSegment?.[0] === '@') {
+		const configuredEnsembleImport = getConfiguredEnsembleImport(firstSegment);
+		if (configuredEnsembleImport) {
+			const basePath = getConfiguredEnsembleBasePath(configuredEnsembleImport);
+
+			return path.join(basePath, ...splitAccessor.slice(1), fileName);
+		}
+	}
+
+	return path.join(process.cwd(), appDir, 'dashboard', newPath + '.js');
+};
+
+const getPackageNodeModulesPaths = entryPath => {
+	return [
+		path.join(process.cwd(), 'node_modules'),
+		path.join(appDir ? path.resolve(process.cwd(), appDir) : process.cwd(), 'node_modules'),
+		path.join(path.dirname(entryPath), 'node_modules')
+	];
+};
+
+const getEnsembleImportPath = importPath => {
+	const configuredEnsembleImport = getConfiguredEnsembleImport(importPath);
+	if (!configuredEnsembleImport)
+		return;
+
+	const basePath = getConfiguredEnsembleBasePath(configuredEnsembleImport);
+
+	return path.join(basePath, ...configuredEnsembleImport.rest);
+};
+
+const resolveJsImportPath = importPath => {
+	if (!importPath)
+		return;
+
+	const possiblePaths = [
+		importPath,
+		`${importPath}.js`,
+		`${importPath}.jsx`,
+		path.join(importPath, 'index.js'),
+		path.join(importPath, 'index.jsx')
+	];
+
+	return possiblePaths.find(existsSync);
+};
+
+const configuredEnsembleResolver = {
+	name: 'configured-ensemble-resolver',
+	setup (build) {
+		build.onResolve({ filter: /^@[^/]+\/.*$/ }, args => {
+			const resolvedPath = resolveJsImportPath(getEnsembleImportPath(args.path));
+			if (!resolvedPath)
+				return;
+
+			return {
+				path: resolvedPath
+			};
+		});
+	}
+};
+
+const bundleSourceAction = async importPath => {
+	if (bundledSourceActions[importPath] !== undefined)
+		return bundledSourceActions[importPath];
+
+	const { outputFiles } = await esbuild.build({
+		entryPoints: [importPath],
+		bundle: true,
+		format: 'esm',
+		platform: 'browser',
+		write: false,
+		nodePaths: getPackageNodeModulesPaths(importPath),
+		plugins: [configuredEnsembleResolver]
+	});
+
+	bundledSourceActions[importPath] = outputFiles[0].text;
+
+	return bundledSourceActions[importPath];
+};
+
+const processSourceAction = (mda, key, fullPath, currentPath) => {
+	if (mda[key] === undefined)
+		return;
+
+	if (!currentPath.value)
+		currentPath.value = getCurrentPath(fullPath);
+
+	let newPath = getMappedPath(mda[key], currentPath.value);
+	if (newPath[0] === '/')
+		newPath = newPath.substr(1);
+
+	const splitAccessor = newPath.split('/');
+	const fileName = splitAccessor.pop() + '.js';
+	const parentOfFile = getPackagedFileParent(splitAccessor);
+	const importPath = getSourceActionImportPath({
+		newPath,
+		splitAccessor,
+		fileName
+	});
+
+	if (!parentOfFile[fileName]) {
+		promisesToAwait.push((async () => {
+			parentOfFile[fileName] = await bundleSourceAction(importPath);
+		})());
+	}
+
+	mda[key] = {
+		path: newPath
+	};
 };
 
 const addTestIdToNode = (mda, parentMda, fullPath) => {
@@ -116,6 +276,7 @@ const addTestIdToNode = (mda, parentMda, fullPath) => {
 
 const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 	let currentPath;
+	const currentPathRef = {};
 
 	if (mda.inlineKeys !== undefined) {
 		mda.inlineKeys.forEach(k => {
@@ -124,87 +285,11 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 
 		delete mda.inlineKeys;
 	}
-	if (mda.srcActions !== undefined) {
-		if (!currentPath)
-			currentPath = getCurrentPath(fullPath);
+	processSourceAction(mda, 'srcActions', fullPath, currentPathRef);
+	processSourceAction(mda, 'srcAction', fullPath, currentPathRef);
 
-		let newPath = getMappedPath(mda.srcActions, currentPath);
-		if (newPath[0] === '/')
-			newPath = newPath.substr(1);
-
-		const splitAccessor = newPath.split('/');
-		const fileName = splitAccessor.pop() + '.js';
-		
-		const parentOfFile = splitAccessor.reduce((p, n) => {
-			if (!p[n])
-				p[n] = {};
-
-			return p[n];
-		}, fullMda.dashboard);
-
-		const remappedEntry = remappedPaths.find(f => `dashboard\\${splitAccessor[0]}` === f.remappedPath.replace('/', '\\'));
-		let importPath;
-		if (remappedEntry)
-			importPath = `${remappedEntry.path}/${splitAccessor.slice(1).join('/')}/${fileName}`;
-		else {
-			if (ensembleNames.some(f => splitAccessor[0] === `@${f.name}`))
-				importPath = path.join(process.cwd(), 'node_modules', `${newPath.substr(1)}.js`);
-			else
-				importPath = path.join(process.cwd(), appDir, 'dashboard', newPath + '.js');
-		}
-
-		if (!parentOfFile[fileName]) {
-			promisesToAwait.push((async () => {
-				const fileString = (await readFile(importPath, 'utf-8'));
-
-				parentOfFile[fileName] = fileString;
-			})());
-		}
-
-		mda.srcActions = {
-			path: newPath
-		};
-	} else if (mda.srcAction !== undefined) {
-		if (!currentPath)
-			currentPath = getCurrentPath(fullPath);
-
-		let newPath = getMappedPath(mda.srcAction, currentPath);
-		if (newPath[0] === '/')
-			newPath = newPath.substr(1);
-
-		const splitAccessor = newPath.split('/');
-		const fileName = splitAccessor.pop() + '.js';
-		
-		const parentOfFile = splitAccessor.reduce((p, n) => {
-			if (!p[n])
-				p[n] = {};
-
-			return p[n];
-		}, fullMda.dashboard);
-
-		const remappedEntry = remappedPaths.find(f => `dashboard\\${splitAccessor[0]}` === f.remappedPath.replace('/', '\\'));
-		let importPath;
-		if (remappedEntry)
-			importPath = `${remappedEntry.path}/${splitAccessor.slice(1).join('/')}/${fileName}`;
-		else {
-			if (ensembleNames.some(f => splitAccessor[0] === `@${f.name}`))
-				importPath = path.join(process.cwd(), 'node_modules', `${newPath.substr(1)}.js`);
-			else
-				importPath = path.join(process.cwd(), appDir, 'dashboard', newPath + '.js');
-		}
-
-		if (!parentOfFile[fileName]) {
-			promisesToAwait.push((async () => {
-				const fileString = (await readFile(importPath, 'utf-8'));
-
-				parentOfFile[fileName] = fileString;
-			})());
-		}
-
-		mda.srcAction = {
-			path: newPath
-		};
-	}
+	if (currentPathRef.value)
+		currentPath = currentPathRef.value;
 
 	if (mda.src !== undefined && mda.prps !== undefined) {
 		if (!currentPath)
