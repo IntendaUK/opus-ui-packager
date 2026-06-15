@@ -6,10 +6,10 @@ const { nodeHasType, ancestorHasComponentType } = require('../analyzer/helpers')
 //Internals
 const errorType = 'Component Keywords';
 
-const fmComponent = new FuzzyMatcher(['id', 'type', 'prps', 'wgts', 'scope', 'relId', 'traits', 'trait', 'traitPrps', 'container', 'auth', 'comment', 'condition', 'comments']);
-const fmTrait = new FuzzyMatcher(['acceptPrps', 'traitConfig', 'id', 'type', 'prps', 'wgts', 'scope', 'relId', 'traits', 'trait', 'traitPrps', 'container', 'auth', 'comment', 'condition', 'comments']);
-const fmComponentInsideRowMda = new FuzzyMatcher(['rowPrps', 'id', 'type', 'prps', 'wgts', 'scope', 'relId', 'traits', 'trait', 'traitPrps', 'container', 'auth', 'comment', 'condition', 'comments']);
-const fmComponentPopoverMda = new FuzzyMatcher(['position', 'popoverZIndex', 'id', 'type', 'prps', 'wgts', 'scope', 'relId', 'traits', 'trait', 'traitPrps', 'container', 'auth', 'comment', 'condition', 'comments']);
+const fmComponent = new FuzzyMatcher(['id', 'type', 'prps', 'wgts', 'scope', 'relId', 'traits', 'trait', 'traitPrps', 'container', 'auth', 'comment', 'condition', 'comments', 'static']);
+const fmTrait = new FuzzyMatcher(['acceptPrps', 'traitConfig', 'id', 'type', 'prps', 'wgts', 'scope', 'relId', 'traits', 'trait', 'traitPrps', 'container', 'auth', 'comment', 'condition', 'comments', 'static']);
+const fmComponentInsideRowMda = new FuzzyMatcher(['rowPrps', 'id', 'type', 'prps', 'wgts', 'scope', 'relId', 'traits', 'trait', 'traitPrps', 'container', 'auth', 'comment', 'condition', 'comments', 'static']);
+const fmComponentPopoverMda = new FuzzyMatcher(['position', 'popoverZIndex', 'id', 'type', 'prps', 'wgts', 'scope', 'relId', 'traits', 'trait', 'traitPrps', 'container', 'auth', 'comment', 'condition', 'comments', 'static']);
 
 //Checks
 const componentKeywords = (node, errors, mdaPackage) => {
