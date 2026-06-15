@@ -274,100 +274,6 @@ const addTestIdToNode = (mda, parentMda, fullPath) => {
 	mda.prps['data-testid'] = testId;
 };
 
-//A component is marked static when nothing about it requires the dynamic wrapper
-// machinery (id assignment, traits/blueprints, flows, scripts, scope resolution).
-// The wrapper can then take a much cheaper render path for it. We are deliberately
-// conservative: any of these present means NOT static (a false "static" could break
-// behaviour, a missed "static" only forgoes an optimisation).
-const staticBlockingTopKeys = [
-	//Listed by the spec for this feature:
-	'id',
-	'trait',
-	'traits',
-	'scope',
-	'relId',
-	//Defensive extras - these also force the dynamic wrapper path at runtime:
-	'condition',
-	'blueprint',
-	'dynamic',
-	'src',
-	'container',
-	'index',
-	'acceptPrps'
-];
-
-const componentHasScriptsOrFlows = prps => {
-	if (!prps || typeof(prps) !== 'object')
-		return false;
-
-	return (
-		prps.flows !== undefined ||
-		prps.scps !== undefined ||
-		prps.dtaScps !== undefined ||
-		prps.fireScript !== undefined
-	);
-};
-
-//Dynamic prop resolution (morph/state/variable/eval/fn accessors) makes a component's
-// props change at runtime, so it is not static even with no scripts of its own.
-const dynamicAccessorTokens = ['morph.', 'state.', 'variable.', 'scopedVariable.', 'eval.', 'fn.'];
-
-const stringHasDynamicAccessor = s => {
-	if (s.indexOf('{{') === -1 && s.indexOf('((') === -1)
-		return false;
-
-	return dynamicAccessorTokens.some(t => s.includes('{{' + t) || s.includes('((' + t));
-};
-
-const hasDynamicAccessors = value => {
-	if (typeof(value) === 'string')
-		return stringHasDynamicAccessor(value);
-
-	if (!value || typeof(value) !== 'object')
-		return false;
-
-	if (Array.isArray(value))
-		return value.some(hasDynamicAccessors);
-
-	return Object.values(value).some(hasDynamicAccessors);
-};
-
-const markStaticIfApplicable = mda => {
-	//Only consider render components: they have a string `type` and are render-shaped
-	// (have prps and/or wgts). This skips script actions (which can also carry a `type`
-	// and a `scope`) and plain prps objects.
-	const isComponent = (
-		typeof(mda.type) === 'string' &&
-		(mda.prps !== undefined || mda.wgts !== undefined)
-	);
-	if (!isComponent)
-		return;
-
-	const isBlocked = (
-		staticBlockingTopKeys.some(k => mda[k] !== undefined) ||
-		componentHasScriptsOrFlows(mda.prps) ||
-		hasDynamicAccessors(mda.prps)
-	);
-
-	if (isBlocked)
-		return;
-
-	mda.static = true;
-
-	//A component is `pure` (whole subtree static) when it is static itself and every
-	// child component is also pure. Children are processed before the parent, so their
-	// `pure` flags are already set. A pure subtree needs none of the wrapper machinery
-	// and can be rendered once and frozen.
-	const wgts = mda.wgts;
-	if (Array.isArray(wgts)) {
-		const allChildrenPure = wgts.every(w => w && typeof(w) === 'object' && w.pure === true);
-		if (!allChildrenPure)
-			return;
-	}
-
-	mda.pure = true;
-};
-
 const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 	let currentPath;
 	const currentPathRef = {};
@@ -474,8 +380,6 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 
 	if (generateTestIds)
 		addTestIdToNode(mda, parentMda, fullPath);
-
-	markStaticIfApplicable(mda);
 };
 
 const waitForCompletion = async () => {

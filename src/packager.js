@@ -7,6 +7,7 @@ require('colors');
 
 //Helpers
 const recurseProcessMda = require('./packager/recurseProcessMda');
+const markStaticAndPure = require('./packager/markStaticAndPure');
 
 const timeStart = process.hrtime();
 
@@ -471,6 +472,10 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 	recurseProcessMda.run(res);
 
 	await recurseProcessMda.waitForCompletion();
+
+	//Mark static/pure components (whole-app pass: needs the full reference graph).
+	const staticCounts = markStaticAndPure(res);
+	console.log(`...static: ${staticCounts.static} (pure: ${staticCounts.pure}, promoted via reference scan: ${staticCounts.promoted})`.magenta);
 
 	let packagedFileContents = JSON.stringify(res);
 
