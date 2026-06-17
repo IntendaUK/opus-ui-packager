@@ -1,6 +1,6 @@
 {
 	"name": "@intenda/opus-ui-packager",
-	"version": "1.11.0",
+	"version": "1.11.1",
 	"description": "Opus UI Packager",
 	"author": "intenda",
 	"main": "src/packager.js",
@@ -17,8 +17,11 @@
 	"dependencies": {
 		"color-json": "2.0.0",
 		"colors": "^1.4.0",
-		"esbuild": "^0.25.12",
+		"esbuild": "^0.28.1",
 		"fuzzy-matching": "^0.4.3"
+	},
+	"overrides": {
+		"js-yaml": "^4.2.0"
 	},
 	"devDependencies": {
 		"babel-eslint": "^10.1.0",
