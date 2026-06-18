@@ -383,7 +383,13 @@ const recurseProcessMda = (mda, parentMda, fullPath = '') => {
 };
 
 const waitForCompletion = async () => {
+	const count = promisesToAwait.length;
 	await Promise.all(promisesToAwait);
+	//Clear so an incremental rebuild only ever awaits its own freshly-scheduled bundles,
+	// while the bundle-content cache (bundledSourceActions) is kept across rebuilds.
+	promisesToAwait.length = 0;
+
+	return count;
 };
 
 module.exports = {

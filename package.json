@@ -1,6 +1,6 @@
 {
 	"name": "@intenda/opus-ui-packager",
-	"version": "1.13.0",
+	"version": "1.14.0",
 	"description": "Opus UI Packager",
 	"author": "intenda",
 	"main": "src/packager.js",
@@ -12,9 +12,10 @@
 	],
 	"scripts": {
 		"build": "node src/packager.js",
-		"watch": "nodemon src/packager.js"
+		"watch": "node src/packager.js --watch"
 	},
 	"dependencies": {
+		"chokidar": "^3.6.0",
 		"color-json": "2.0.0",
 		"colors": "^1.4.0",
 		"esbuild": "^0.28.1",

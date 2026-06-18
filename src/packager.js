@@ -1,7 +1,7 @@
 /* eslint-disable max-len, max-lines-per-function, max-lines, complexity, no-console */
 
 //Imports
-const { extname, resolve } = require('path');
+const { extname, resolve, relative } = require('path');
 const { readdir, readFile, writeFile } = require('fs').promises;
 require('colors');
 
@@ -9,7 +9,17 @@ require('colors');
 const recurseProcessMda = require('./packager/recurseProcessMda');
 const markStaticAndPure = require('./packager/markStaticAndPure');
 
-const timeStart = process.hrtime();
+//Stage timing instrumentation
+const stageTimings = [];
+let stageMarkRef = process.hrtime.bigint();
+const markStage = label => {
+	const now = process.hrtime.bigint();
+	stageTimings.push([label, Number(now - stageMarkRef) / 1e6]);
+	stageMarkRef = now;
+};
+const resetStageClock = () => {
+	stageMarkRef = process.hrtime.bigint();
+};
 
 const args = Object.fromEntries(
 	process.argv.slice(2)
@@ -34,10 +44,21 @@ let osSlash = '/';
 let opusUiConfig;
 let ensembleNames;
 let remappedPaths = [];
+//Resident state for watch-mode incremental rebuilds (populated by each full build).
+let fileLocations = new Map();
+let live = null;
+
+//Canonical key for a file path, so chokidar paths and packager paths always match.
+const normPath = p => {
+	const abs = resolve(p).replaceAll('\\', '/');
+
+	return osSlash === '\\' ? abs.toLowerCase() : abs;
+};
 
 const excludeEnsembles = args.excludeEnsembles === 'true';
 const includePaths = args.includePaths === 'true';
 const generateTestIds = args.generateTestIds === 'true';
+const watch = ('watch' in args) && args.watch !== 'false';
 
 const opusUiConfigFileName = '.opusUiConfig';
 const opusUiConfigKeys = ['opusPackagerConfig', 'opusUiComponentLibraries', 'opusUiEnsembles', 'opusUiColorThemes'];
@@ -77,7 +98,15 @@ async function* getFiles (path, couldContainEnsembles) {
 	if (!mappedPath)
 		return;
 
-	const dirents = await readdir(mappedPath, { withFileTypes: true });
+	let dirents;
+	try {
+		dirents = await readdir(mappedPath, { withFileTypes: true });
+	} catch (err) {
+		if (err.code === 'ENOENT')
+			return;
+
+		throw err;
+	}
 	for (let i = 0, len = dirents.length; i < len; i++) {
 		const dirent = dirents[i];
 		const fullPath = resolve(mappedPath, dirent.name);
@@ -191,6 +220,9 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 				dirs.splice(2, 1);
 			}
 
+			//Remember where this file lands so a watch-mode change can re-splice it in place.
+			fileLocations.set(normPath(path), { keyPath, dirs: dirs.slice(), key });
+
 			// Walk through the directory structure on the `res` object.
 			let accessor = res;
 			dirs.forEach(d => {
@@ -225,6 +257,8 @@ const processDir = async (dir, cwd, res, couldContainEnsembles = false) => {
 	}
 
 	await Promise.all(tasks);
+
+	return tasks.length;
 };
 
 const isObjectLiteral = value => {
@@ -298,13 +332,42 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 	return res;
 };
 
-//Packager
-(async () => {
-	if (args.devmode === 'true')
-		await new Promise(innerRes => setTimeout(innerRes, 2000));
+//Serialize the assembled package and write it to disk.
+const writeOutput = async (res, packagedDir, packagedFileName) => {
+	let packagedFileContents = JSON.stringify(res);
+	markStage('JSON.stringify');
 
+	if (args.output === 'js')
+		packagedFileContents = `/* eslint-disable */ const app = ${packagedFileContents}; export default app;`;
+
+	await writeFile(`${packagedDir}/${packagedFileName}`, packagedFileContents);
+	markStage('writeFile');
+
+	return packagedFileContents;
+};
+
+//Print the per-stage timing breakdown for one build.
+const printBreakdown = (totalFilesProcessed, bundleCount, packagedFileContents, elapsedMs) => {
+	const breakdownTotal = stageTimings.reduce((sum, [, ms]) => sum + ms, 0);
+	console.log('\n  Stage breakdown'.brightCyan + ` (${totalFilesProcessed} JSON files, ${bundleCount ?? 0} JS bundles, output ${~~(packagedFileContents.length / 1048576)}MB):`.cyan);
+	stageTimings.forEach(([label, ms]) => {
+		const pct = breakdownTotal ? (ms / breakdownTotal * 100) : 0;
+		console.log(`    ${ms.toFixed(0).padStart(7)}ms  ${pct.toFixed(1).padStart(5)}%  ${label}`.cyan);
+	});
+
+	console.log(`\n...completed (${elapsedMs.toFixed(0)}ms)`.magenta);
+};
+
+//Build one full package from the current working directory.
+const runBuild = async () => {
+	const buildStart = process.hrtime.bigint();
 	console.log('Packaging...'.brightMagenta);
+	stageTimings.length = 0;
+	resetStageClock();
+
 	const res = {};
+	remappedPaths = [];
+	fileLocations = new Map();
 
 	let packageFile = {};
 	try {
@@ -314,6 +377,7 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 	opusUiConfig = await buildOpusUiConfig(packageFile);
 
 	await init(opusUiConfig);
+	markStage('read package.json + config + init');
 
 	let packagedFileName = (opusUiConfig.opusPackagerConfig?.packagedFileName ?? 'mdaPackage');
 
@@ -332,7 +396,12 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 	];
 
 	if (!excludeEnsembles) {
-		if (!['', '.', './'].includes(appDir) && !opusUiConfig.opusPackagerConfig.isEnsemble) {
+		if (
+			!['', '.', './'].includes(appDir) &&
+			!opusUiConfig.opusPackagerConfig.isEnsemble &&
+			//Only worth scanning node_modules if some ensemble is actually installed there.
+			ensembleNames.some(e => !e.external)
+		) {
 			promises.push(
 				processDir('node_modules', `${process.cwd()}${osSlash}node_modules`, res, true)
 			);
@@ -344,7 +413,9 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 		);
 	}
 
-	await Promise.all(promises);
+	const fileCounts = await Promise.all(promises);
+	const totalFilesProcessed = fileCounts.reduce((sum, n) => sum + (n || 0), 0);
+	markStage('read + parse + setPaths (processDir)');
 
 	delete res[''];
 
@@ -408,6 +479,15 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 	delete res['package.json'];
 	delete res['package-lock.json'];
 	delete res['serve.json'];
+	markStage('merge ensemble themes');
+
+	//Resolve a freetext theme asset path. Mirrors the function-theme convention: a
+	// `{ensembleLocation}` placeholder is substituted with the owning ensemble's location
+	// (absolute for external ensembles), otherwise the path is taken relative to appDir.
+	const resolveThemeAssetPath = (rawPath, ensembleLocation) =>
+		rawPath.includes('{ensembleLocation}')
+			? rawPath.replaceAll('{ensembleLocation}', ensembleLocation ?? '')
+			: `${appDir ? appDir + osSlash : ''}${rawPath}`;
 
 	if (!opusUiConfig.opusPackagerConfig.isEnsemble) {
 		const themeEntries = Object.entries(res.theme);
@@ -435,8 +515,7 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 					if (v.indexOf && v.indexOf('>>') === 0) {
 						theme[k] = {};
 
-						let folder = v.substr(2);
-						folder = `${appDir ? appDir + osSlash : ''}${folder}`;
+						const folder = resolveThemeAssetPath(v.substr(2), theme.ensembleLocation);
 
 						const dirents = await readdir(folder, { withFileTypes: true });
 
@@ -452,7 +531,7 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 					if (v[0] !== '>')
 						continue;
 
-					const f = `${appDir ? appDir + osSlash : ''}${v.substr(1)}`;
+					const f = resolveThemeAssetPath(v.substr(1), theme.ensembleLocation);
 
 					const convertedFileString = (await readFile(f, 'utf-8'));
 
@@ -461,6 +540,8 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 			}
 		}
 	}
+
+	markStage('inline theme JS/freetext files');
 
 	recurseProcessMda.init({
 		appDir,
@@ -471,21 +552,222 @@ const buildOpusUiConfig = async opusAppPackageValue => {
 	});
 	recurseProcessMda.run(res);
 
-	await recurseProcessMda.waitForCompletion();
+	const bundleCount = await recurseProcessMda.waitForCompletion();
+	markStage('recurseProcessMda + bundle source actions');
 
 	//Mark static/pure components (whole-app pass: needs the full reference graph).
 	const staticCounts = markStaticAndPure(res);
+	markStage('markStaticAndPure');
 	console.log(`...static: ${staticCounts.static} (pure: ${staticCounts.pure}, promoted via reference scan: ${staticCounts.promoted})`.magenta);
 
-	let packagedFileContents = JSON.stringify(res);
+	const packagedFileContents = await writeOutput(res, packagedDir, packagedFileName);
 
-	if (args.output === 'js')
-		packagedFileContents = `/* eslint-disable */ const app = ${packagedFileContents}; export default app;`;
+	const elapsedMs = Number(process.hrtime.bigint() - buildStart) / 1e6;
+	printBreakdown(totalFilesProcessed, bundleCount, packagedFileContents, elapsedMs);
 
-	await writeFile(`${packagedDir}/${packagedFileName}`, packagedFileContents);
+	//Publish resident state so watch-mode incremental rebuilds can patch this same tree.
+	live = { res, packagedDir, packagedFileName };
 
-	const timeDiff = process.hrtime(timeStart);
-	const elapsedMs = ~~(timeDiff[1] / 1e6);
+	return res;
+};
 
-	console.log(`...completed (${elapsedMs}ms)`.magenta);
+//Re-process a single changed component file in place: re-parse it, splice its subtree into
+// the resident tree, and run the per-file (local) resolution pass over just that subtree.
+// Returns false if the file can't be read (vanished mid-event) so the caller can fall back.
+const processChangedFile = async p => {
+	const loc = fileLocations.get(normPath(p));
+
+	let file;
+	try {
+		file = (await readFile(p, 'utf-8')).replace(/[\r\n\t]/g, '');
+	} catch {
+		return false;
+	}
+
+	let json;
+	try {
+		json = JSON.parse(file);
+	} catch {
+		json = {
+			acceptPrps: {},
+			type: 'label',
+			prps: { cpt: `'${p}' is not valid JSON` }
+		};
+	}
+
+	setPathsOnComponents(json, loc.keyPath);
+
+	//Splice the fresh subtree into the resident tree at its recorded location.
+	let parent = live.res;
+	loc.dirs.forEach(d => {
+		if (!parent[d])
+			parent[d] = {};
+
+		parent = parent[d];
+	});
+	parent[loc.key] = json;
+
+	//Resolve traits/src/srcActions for just this subtree (bundles for unchanged source
+	// actions are already present in the tree, so esbuild is skipped for them).
+	recurseProcessMda.run(json, parent, `/${loc.dirs.join('/')}/${loc.key}`);
+
+	return true;
+};
+
+//Only plain component/trait files under `dashboard` are safe to patch surgically. Theme
+// files (also merged into `res.theme` and inlined during the theme stage), ensemble
+// `config.json` (drives theme merge), adds/deletes and `.js` source actions fall back to a
+// full rebuild.
+const isIncrementalEligible = (event, p) => {
+	if (event !== 'change' || !p.endsWith('.json'))
+		return false;
+
+	const loc = fileLocations.get(normPath(p));
+	if (!loc)
+		return false;
+
+	return (
+		loc.dirs[0] === 'dashboard' &&
+		!loc.dirs.includes('theme') &&
+		loc.key !== 'config.json'
+	);
+};
+
+//Incremental rebuild: re-process only the changed files, then re-run the global passes
+// (static/pure marking, serialize, write) that must see the whole tree. Returns false to
+// signal the caller should fall back to a full rebuild.
+const runIncremental = async paths => {
+	const buildStart = process.hrtime.bigint();
+	stageTimings.length = 0;
+	resetStageClock();
+	console.log(`Repackaging (${paths.length} changed file(s))...`.brightMagenta);
+
+	for (const p of paths) {
+		/* eslint-disable-next-line no-await-in-loop */
+		const ok = await processChangedFile(p);
+		if (!ok)
+			return false;
+	}
+	markStage('reparse + splice changed files');
+
+	await recurseProcessMda.waitForCompletion();
+	markStage('recurseProcessMda (changed subtrees)');
+
+	const staticCounts = markStaticAndPure(live.res);
+	markStage('markStaticAndPure');
+	console.log(`...static: ${staticCounts.static} (pure: ${staticCounts.pure}, promoted via reference scan: ${staticCounts.promoted})`.magenta);
+
+	const packagedFileContents = await writeOutput(live.res, live.packagedDir, live.packagedFileName);
+
+	const elapsedMs = Number(process.hrtime.bigint() - buildStart) / 1e6;
+	printBreakdown(fileLocations.size, '·', packagedFileContents, elapsedMs);
+
+	return true;
+};
+
+//Build once, then keep the process alive and rebuild on source changes. Staying resident
+// avoids per-save node startup, module loading and esbuild-service respawn, and keeps the
+// esbuild service warm. Rebuilds are serialized (one at a time) and debounced so a burst of
+// saves coalesces into a single build.
+const startWatch = async () => {
+	const chokidar = require('chokidar');
+
+	//Initial full build (populates module-level config/ensemble state used below).
+	await runBuild();
+
+	let packageFile = {};
+	try {
+		packageFile = JSON.parse(await readFile('package.json', 'utf-8'));
+	} catch {}
+
+	const appDir = opusUiConfig.opusPackagerConfig?.appDir ?? '';
+	const packagedDir = opusUiConfig.opusPackagerConfig?.packagedDir ?? 'packaged';
+
+	//Watch the app, every external ensemble, and the config files. Non-external ensembles
+	// live in node_modules (ignored below); they don't change during local dev.
+	const watchPaths = [
+		appDir ? resolve(process.cwd(), appDir) : process.cwd(),
+		...ensembleNames.filter(e => e.external).map(e => e.path),
+		resolve(process.cwd(), 'package.json'),
+		resolve(process.cwd(), buildExternalOpusUiConfigPath(packageFile))
+	];
+
+	const watcher = chokidar.watch(watchPaths, {
+		ignoreInitial: true,
+		ignored: [
+			/[/\\]node_modules[/\\]/,
+			/[/\\]\.git[/\\]/,
+			resolve(process.cwd(), packagedDir)
+		],
+		//Wait for writes to settle so we never read a half-written file.
+		awaitWriteFinish: { stabilityThreshold: 80, pollInterval: 20 }
+	});
+
+	const pendingChanges = new Map();
+	let building = false;
+	let queued = false;
+	let debounceTimer = null;
+
+	const runQueued = async () => {
+		debounceTimer = null;
+
+		if (building) {
+			queued = true;
+
+			return;
+		}
+
+		const changes = [...pendingChanges.entries()];
+		pendingChanges.clear();
+		if (changes.length === 0)
+			return;
+
+		building = true;
+		try {
+			//Surgical update only if every change is an eligible in-place edit; otherwise
+			// (adds, deletes, theme/config/js, unknown files) do a safe full rebuild.
+			const allEligible = changes.every(([p, ev]) => isIncrementalEligible(ev, p));
+
+			const done = allEligible && await runIncremental(changes.map(([p]) => p));
+			if (!done)
+				await runBuild();
+		} catch (err) {
+			console.log(`...build failed: ${err.message}`.red);
+		}
+		building = false;
+
+		if (queued) {
+			queued = false;
+			triggerBuild();
+		}
+	};
+
+	/* eslint-disable-next-line func-style */
+	function triggerBuild () {
+		if (debounceTimer)
+			clearTimeout(debounceTimer);
+
+		debounceTimer = setTimeout(runQueued, 60);
+	}
+
+	watcher
+		.on('all', (event, changedPath) => {
+			pendingChanges.set(changedPath, event);
+			console.log(`\n${event}: ${relative(process.cwd(), changedPath)}`.grey);
+			triggerBuild();
+		})
+		.on('error', err => console.log(`...watch error: ${err.message}`.red));
+
+	console.log(`\nWatching ${watchPaths.length} roots for changes (Ctrl+C to stop)...`.brightGreen);
+};
+
+//Entry point
+(async () => {
+	if (args.devmode === 'true')
+		await new Promise(innerRes => setTimeout(innerRes, 2000));
+
+	if (watch)
+		await startWatch();
+	else
+		await runBuild();
 })();

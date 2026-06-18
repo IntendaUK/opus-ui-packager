@@ -183,6 +183,11 @@ const markNode = (mda, refs, counts) => {
 	if (!isComponent(mda))
 		return;
 
+	//Re-runnable: clear marks from any previous pass before recomputing, so incremental
+	// rebuilds (which re-mark the whole resident tree) can't leave stale static/pure flags.
+	delete mda.static;
+	delete mda.pure;
+
 	const blocked = (
 		behaviouralBlockingKeys.some(k => mda[k] !== undefined) ||
 		templateBlockingKeys.some(k => mda[k] !== undefined) ||
